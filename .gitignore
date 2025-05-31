@@ -118,7 +118,6 @@ dmypy.json
 cython_debug/
 
 # ComfyUI specific
-workflows/
 models/
 temp/
 tmp/

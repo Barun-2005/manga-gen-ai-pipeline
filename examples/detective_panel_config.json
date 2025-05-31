@@ -1,0 +1,11 @@
+{
+  "prompt": "A detective examining clues under a streetlight, serious expression, noir atmosphere",
+  "pose_image": "generate:person crouching down examining something on the ground",
+  "style_image": "process:detective_conan",
+  "seed": 67890,
+  "metadata": {
+    "description": "Example configuration for generating a detective investigation panel",
+    "style_reference": "Detective Conan manga style",
+    "expected_output": "Black and white manga panel with investigative scene"
+  }
+}
