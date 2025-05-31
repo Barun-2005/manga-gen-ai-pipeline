@@ -1,79 +1,77 @@
-# MangaGen - AI-Powered Manga Generation Pipeline
+# MangaGen – AI-Powered Manga Generation Framework
 
-A full-stack manga generation pipeline that transforms text prompts into complete manga stories using AI. The system combines Large Language Models (LLMs) for story generation with Stable Diffusion via ComfyUI for visual creation.
+**MangaGen** is an experimental pipeline for turning plain text prompts into manga-style stories with visuals. It combines large language models (LLMs) for structured storytelling and Stable Diffusion (via ComfyUI) for generating stylized manga panels.
 
-## 🚀 Features
+This project is still under active development, and many features are subject to change as we refine the workflow.
 
-- **Story Generation**: Uses OpenRouter API to generate structured manga stories from simple prompts
-- **Visual Creation**: Integrates with ComfyUI for high-quality manga-style image generation
-- **Modular Design**: Clean, extensible architecture with separate modules for each pipeline stage
-- **Multiple Genres**: Support for different manga genres (shonen, seinen, slice-of-life, fantasy)
-- **Customizable**: Configurable story structure, image dimensions, and generation parameters
-- **Progress Tracking**: Real-time progress monitoring and logging
+---
 
-## 📁 Project Structure
+## Features
+
+- **Story Generation**
+  Generates multi-act story structures using OpenRouter-powered LLMs.
+
+- **Visual Generation**
+  Uses ComfyUI to generate high-resolution manga-style images from scene descriptions.
+
+- **Modular Pipeline**
+  Clean separation of logic between story, image, and orchestration components.
+
+- **Multi-Genre Support**
+  Works across genres like shonen, seinen, slice-of-life, and fantasy.
+
+- **Customizable Output**
+  Set your own dimensions, genre, seeds, and scene structure via config or CLI.
+
+---
+
+## Project Layout
 
 ```
 MangaGen/
-│
-├── llm/                           # LLM story generation
-│   ├── story_generator.py         # OpenRouter LLM integration
-│   └── prompt_templates.py        # Story prompt templates
-│
-├── image_gen/                     # Image generation
-│   ├── comfy_client.py            # ComfyUI API client
-│   └── prompt_builder.py          # SD prompt generation
-│
-├── pipeline/                      # Main pipeline
-│   ├── generate_manga.py          # Main orchestration script
-│   └── utils.py                   # Utilities and helpers
-│
-├── output/                        # Generated content
-│   ├── images/                    # Generated images
-│   └── manga/                     # Final compiled manga
-│
-├── .env                           # Environment variables
-├── requirements.txt               # Python dependencies
-└── README.md                      # This file
+├── llm/                    # Language model story generation
+│   ├── story_generator.py
+│   └── prompt_templates.py
+├── image_gen/              # ComfyUI-based image generation
+│   ├── comfy_client.py
+│   └── prompt_builder.py
+├── pipeline/               # Main orchestration logic
+│   ├── generate_manga.py
+│   └── utils.py
+├── output/                 # Generated stories and images
+├── .env                    # Environment configuration
+├── requirements.txt
+└── README.md
 ```
 
-## 🛠️ Installation
+---
+
+## Getting Started
 
 ### Prerequisites
 
-- Python 3.10 or higher
-- ComfyUI installed and running (for image generation)
-- OpenRouter API key (for story generation)
+- Python 3.10+
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) installed and running
+- OpenRouter API key for LLM-based story generation
 
 ### Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd MangaGen
-   ```
+```bash
+git clone <your-repo-url>
+cd MangaGen
+pip install -r requirements.txt
+cp .env.example .env  # Then edit it with your API keys and config
+```
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### ComfyUI Setup
 
-3. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and settings
-   ```
+Follow ComfyUI's setup instructions and make sure it runs on `http://127.0.0.1:8188`. Update your `.env` file accordingly.
 
-4. **Set up ComfyUI**
-   - Install ComfyUI following their official documentation
-   - Ensure ComfyUI is running on `http://127.0.0.1:8188` (or update COMFYUI_URL in .env)
-   - Load appropriate models for manga-style generation
+---
 
-## 🚀 Quick Start
+## Usage
 
-### Basic Usage
-
-Generate a manga from a simple prompt:
+### Basic Example
 
 ```bash
 python pipeline/generate_manga.py "A young ninja discovers magical powers in a modern city"
@@ -89,27 +87,21 @@ python pipeline/generate_manga.py \
   --seed 42
 ```
 
-### Programmatic Usage
+### Python API
 
 ```python
 from pipeline.generate_manga import MangaGenerator
 
-# Initialize generator
 generator = MangaGenerator()
-
-# Generate complete manga
-results = generator.generate_complete_manga(
+result = generator.generate_complete_manga(
     prompt="A robot learns about human emotions",
     genre="slice_of_life"
 )
-
-if results["success"]:
-    print(f"Generated manga saved to: {results['manga_path']}")
 ```
 
-## 📖 Usage Examples
+### Working With Components
 
-### Story Generation Only
+#### Story Only
 
 ```python
 from llm.story_generator import generate_manga_story
@@ -122,12 +114,11 @@ story = generate_manga_story(
 print(story["story_text"])
 ```
 
-### Image Prompt Building
+#### Image Prompt Builder
 
 ```python
 from image_gen.prompt_builder import PromptBuilder, Scene, Character
 
-# Create character
 protagonist = Character(
     name="Akira",
     appearance="spiky black hair, determined eyes",
@@ -135,7 +126,6 @@ protagonist = Character(
     personality_traits="passionate, creative"
 )
 
-# Create scene
 scene = Scene(
     description="The chef discovers glowing ingredients",
     location="magical kitchen",
@@ -145,153 +135,92 @@ scene = Scene(
     action="mixing glowing ingredients"
 )
 
-# Build prompt
 builder = PromptBuilder()
 builder.add_character(protagonist)
 prompt = builder.build_scene_prompt(scene, "dramatic")
 ```
 
-## ⚙️ Configuration
+---
 
-### Environment Variables
+## Configuration Overview
 
-Key configuration options in `.env`:
+Edit your `.env` to tweak the following:
 
 ```env
-# API Keys
 OPENROUTER_API_KEY=your_key_here
 COMFYUI_URL=http://127.0.0.1:8188
 
-# Generation Settings
 IMAGE_WIDTH=512
 IMAGE_HEIGHT=768
 DEFAULT_GENRE=shonen
 RANDOM_SEED=-1
 
-# Output Settings
 OUTPUT_DIR=./output
 LOG_LEVEL=INFO
 ```
 
-### Story Structure
+### Genres Supported
 
-Configure story generation:
+**Shonen** – Action-packed, youth-focused stories
 
-- **Acts**: Number of story acts (default: 3)
-- **Scenes per Act**: Scenes in each act (default: 3)
-- **Genre**: Story genre affecting tone and themes
-- **Model**: LLM model for story generation
+**Seinen** – More mature, dark, or psychological narratives
 
-### Image Generation
+**Slice of Life** – Realistic, everyday settings
 
-Configure image output:
+**Fantasy** – Magic, otherworldly settings, and epic themes
 
-- **Dimensions**: Image width and height
-- **Style**: Manga style presets
-- **Quality**: Generation quality settings
-- **Batch Size**: Number of concurrent generations
+---
 
-## 🎨 Supported Genres
+## Dev Notes
 
-- **Shonen**: Action-oriented, friendship themes
-- **Seinen**: Mature, complex narratives
-- **Slice of Life**: Everyday moments, character-driven
-- **Fantasy**: Magic systems, epic quests
+### Add New Templates
+Modify `llm/prompt_templates.py`.
 
-## 🔧 Development
+### Custom Prompts for Images
+Extend logic in `image_gen/prompt_builder.py`.
 
-### Adding New Features
-
-1. **New Story Templates**: Add to `llm/prompt_templates.py`
-2. **Custom Prompts**: Extend `image_gen/prompt_builder.py`
-3. **Pipeline Steps**: Modify `pipeline/generate_manga.py`
-
-### Testing
-
+### Run Tests
 ```bash
-# Run basic tests
 python -m pytest tests/
+```
 
-# Test individual components
+Or run components manually:
+```bash
 python llm/story_generator.py
 python image_gen/prompt_builder.py
 ```
 
-### Code Style
-
+### Format & Lint
 ```bash
-# Format code
 black .
-
-# Check style
 flake8 .
 ```
 
-## 🐛 Troubleshooting
+---
 
-### Common Issues
+## Troubleshooting
 
-1. **ComfyUI Connection Failed**
-   - Ensure ComfyUI is running
-   - Check COMFYUI_URL in .env
-   - Verify firewall settings
+**ComfyUI not connecting?**
+- Make sure it's running at the URL specified in `.env`
+- Check firewall or port issues
 
-2. **API Key Errors**
-   - Verify OPENROUTER_API_KEY is set
-   - Check API key permissions
-   - Ensure sufficient API credits
+**API key errors?**
+- Double-check your `.env`
+- Make sure your key is active and has enough quota
 
-3. **Generation Failures**
-   - Check log files for detailed errors
-   - Verify model availability in ComfyUI
-   - Ensure sufficient disk space
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-export LOG_LEVEL=DEBUG
-python pipeline/generate_manga.py "your prompt"
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- OpenRouter for LLM API access
-- ComfyUI for Stable Diffusion integration
-- The open-source AI community
-
-## 🔮 Future Features
-
-- [ ] Web interface for easy manga generation
-- [ ] Character consistency across panels
-- [ ] Advanced panel layout algorithms
-- [ ] Voice synthesis for dialogue
-- [ ] Animation support
-- [ ] Multi-language story generation
-- [ ] Custom model training integration
-- [ ] Collaborative story editing
-
-## 📞 Support
-
-For questions and support:
-
-- Create an issue on GitHub
-- Check the documentation
-- Review existing issues for solutions
+**Image generation failed?**
+- Check that the right models are loaded in ComfyUI
+- Look at the log output for detailed error messages
 
 ---
 
-**Note**: This is a development framework. Actual manga generation quality depends on the underlying models (LLM and Stable Diffusion) and their configuration.
+## Future Plans
+
+Some things on the roadmap:
+
+- Web interface for easy prompt entry and preview
+- Better panel layouting
+- Character tracking and consistency across scenes
+- Support for dialogue/voice synthesis
+- Potential for multi-language support
+- Shared editing tools for collaborative storybuilding
