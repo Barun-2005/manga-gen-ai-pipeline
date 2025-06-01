@@ -18,7 +18,7 @@ class StoryGenerator:
     Generates manga stories using OpenRouter LLM API.
     """
 
-    def __init__(self, model: str = "anthropic/claude-3-sonnet"):
+    def __init__(self, model: str = "deepseek/deepseek-r1-distill-llama-70b"):
         """
         Initialize the story generator.
 

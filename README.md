@@ -160,6 +160,7 @@ Edit your `.env` to tweak the following:
 
 ```env
 OPENROUTER_API_KEY=your_key_here
+LLM_MODEL=deepseek/deepseek-r1-distill-llama-70b
 COMFYUI_URL=http://127.0.0.1:8188
 
 IMAGE_WIDTH=512
@@ -170,6 +171,14 @@ RANDOM_SEED=-1
 OUTPUT_DIR=./outputs
 LOG_LEVEL=INFO
 ```
+
+### Story Generation Model
+
+Uses **DeepSeek R1** (free via OpenRouter) for high-quality story generation:
+- **Free to use** - No cost for story generation
+- **High quality** - Excellent creative writing capabilities
+- **Fast response** - Quick story generation
+- **No quotas** - Generate as many stories as needed
 
 ### Genres Supported
 
@@ -207,6 +216,12 @@ Generate single panel from text:
 ```bash
 python scripts/generate_from_prompt.py "ninja dodging kunai"
 python scripts/generate_from_prompt.py "girl reading book" --style shoujo
+```
+
+Generate complete manga from vague prompt:
+```bash
+python scripts/generate_full_manga.py "ninja discovers magic"
+python scripts/generate_full_manga.py "robot learns emotions" --chapters 5
 ```
 
 Or run components manually:

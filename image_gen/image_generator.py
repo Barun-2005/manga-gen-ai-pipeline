@@ -41,11 +41,9 @@ def generate_image(prompt: str, index: int) -> str:
             return _create_placeholder_image(index)
         
         # Create workflow for image generation
-        workflow = _create_manga_workflow(
+        workflow = _load_and_customize_workflow(
             positive_prompt=positive_prompt,
             negative_prompt=negative_prompt,
-            width=512,
-            height=768,  # Manga panel aspect ratio
             seed=_generate_seed(index)
         )
         
@@ -112,58 +110,103 @@ def _generate_seed(index: int) -> int:
     return base_seed + index * 1000
 
 
-def _create_manga_workflow(
+def _load_and_customize_workflow(
     positive_prompt: str,
     negative_prompt: str,
-    width: int = 512,
-    height: int = 768,
-    seed: int = 42,
-    steps: int = 20,
-    cfg_scale: float = 7.0
+    seed: int = None
 ) -> Dict[str, Any]:
     """
-    Create a ComfyUI workflow optimized for manga generation.
-    
+    Load and customize the working manga workflow template.
+
     Args:
-        positive_prompt: Positive prompt
-        negative_prompt: Negative prompt
-        width: Image width
-        height: Image height
+        positive_prompt: Positive prompt text
+        negative_prompt: Negative prompt text
         seed: Random seed
-        steps: Sampling steps
-        cfg_scale: CFG scale
-        
+
     Returns:
-        ComfyUI workflow dictionary
+        Customized ComfyUI workflow dictionary
     """
-    # This is a simplified workflow structure
-    # In a real implementation, this would be a complete ComfyUI workflow JSON
-    workflow = {
+    import json
+
+    if seed is None:
+        seed = int(time.time()) % 1000000
+
+    # Load the working workflow template
+    workflow_path = Path("workflows/manga/working_manga_workflow.json")
+
+    try:
+        with open(workflow_path, 'r') as f:
+            workflow = json.load(f)
+
+        # Customize the workflow with our parameters
+        # Replace prompt placeholder
+        if "2" in workflow and "inputs" in workflow["2"]:
+            template_text = workflow["2"]["inputs"]["text"]
+            workflow["2"]["inputs"]["text"] = template_text.replace("{prompt}", positive_prompt)
+
+        # Update negative prompt if provided
+        if negative_prompt and "3" in workflow and "inputs" in workflow["3"]:
+            workflow["3"]["inputs"]["text"] = negative_prompt
+
+        # Set seed
+        if "5" in workflow and "inputs" in workflow["5"]:
+            workflow["5"]["inputs"]["seed"] = seed
+
+        # Update filename with timestamp
+        if "7" in workflow and "inputs" in workflow["7"]:
+            timestamp = int(time.time())
+            workflow["7"]["inputs"]["filename_prefix"] = f"manga_panel_{timestamp}"
+
+        return workflow
+
+    except Exception as e:
+        print(f"Error loading workflow template: {e}")
+        # Fallback to basic workflow
+        return _create_basic_workflow(positive_prompt, negative_prompt, seed)
+
+
+def _create_basic_workflow(
+    positive_prompt: str,
+    negative_prompt: str,
+    seed: int
+) -> Dict[str, Any]:
+    """
+    Create a basic fallback workflow when template loading fails.
+
+    Args:
+        positive_prompt: Positive prompt text
+        negative_prompt: Negative prompt text
+        seed: Random seed
+
+    Returns:
+        Basic ComfyUI workflow dictionary
+    """
+    return {
         "1": {
             "class_type": "CheckpointLoaderSimple",
             "inputs": {
-                "ckpt_name": "manga_model.safetensors"  # Placeholder model name
+                "ckpt_name": "v1-5-pruned-emaonly.safetensors"
             }
         },
         "2": {
             "class_type": "CLIPTextEncode",
             "inputs": {
-                "text": positive_prompt,
+                "text": f"{positive_prompt}, masterpiece, best quality, manga style, black and white",
                 "clip": ["1", 1]
             }
         },
         "3": {
             "class_type": "CLIPTextEncode",
             "inputs": {
-                "text": negative_prompt,
+                "text": negative_prompt or "blurry, low quality, bad anatomy",
                 "clip": ["1", 1]
             }
         },
         "4": {
             "class_type": "EmptyLatentImage",
             "inputs": {
-                "width": width,
-                "height": height,
+                "width": 512,
+                "height": 768,
                 "batch_size": 1
             }
         },
@@ -171,8 +214,8 @@ def _create_manga_workflow(
             "class_type": "KSampler",
             "inputs": {
                 "seed": seed,
-                "steps": steps,
-                "cfg": cfg_scale,
+                "steps": 25,
+                "cfg": 7.5,
                 "sampler_name": "euler",
                 "scheduler": "normal",
                 "denoise": 1.0,
@@ -197,8 +240,7 @@ def _create_manga_workflow(
             }
         }
     }
-    
-    return workflow
+
 
 
 def _create_placeholder_image(index: int) -> str:
