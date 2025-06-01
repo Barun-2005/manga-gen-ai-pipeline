@@ -272,17 +272,118 @@ def test_full_pipeline() -> bool:
         return False
 
 
+def test_automation_functions() -> bool:
+    """
+    Test the automation helper functions.
+
+    Returns:
+        True if automation functions work, False otherwise
+    """
+    print("\n🔍 Testing automation functions...")
+
+    try:
+        from pipeline.automation_stubs import generate_pose_from_text, assign_style_automatically
+
+        # Test pose generation
+        test_prompt = "ninja jumping over rooftop"
+        print(f"  Testing pose detection with: '{test_prompt}'")
+
+        pose_data = generate_pose_from_text(test_prompt)
+
+        if isinstance(pose_data, dict) and "pose_type" in pose_data:
+            print(f"  ✅ Pose detected: {pose_data['pose_type']} ({pose_data['composition']})")
+        else:
+            print(f"  ❌ Invalid pose data: {pose_data}")
+            return False
+
+        # Test style assignment
+        style_data = assign_style_automatically(test_prompt)
+
+        if isinstance(style_data, dict) and "manga_genre" in style_data:
+            print(f"  ✅ Style detected: {style_data['manga_genre']}")
+        else:
+            print(f"  ❌ Invalid style data: {style_data}")
+            return False
+
+        return True
+
+    except Exception as e:
+        print(f"  ❌ Automation functions error: {e}")
+        return False
+
+
+def test_text_to_panel_script() -> bool:
+    """
+    Test the text-to-panel generation script.
+
+    Returns:
+        True if script works, False otherwise
+    """
+    print("\n🔍 Testing text-to-panel script...")
+
+    try:
+        # Import the main function from the script
+        import sys
+        from pathlib import Path
+
+        script_path = Path(__file__).parent / "generate_from_prompt.py"
+        if not script_path.exists():
+            print(f"  ❌ Script not found: {script_path}")
+            return False
+
+        # Test the core function
+        sys.path.insert(0, str(script_path.parent))
+        from generate_from_prompt import generate_manga_panel
+
+        test_prompt = "cat sitting by window"
+        print(f"  Testing with prompt: '{test_prompt}'")
+
+        # Generate a test panel
+        result_path = generate_manga_panel(
+            text_prompt=test_prompt,
+            pose_override="sitting",
+            style_override="slice_of_life"
+        )
+
+        if result_path and Path(result_path).exists():
+            file_size = Path(result_path).stat().st_size
+            print(f"  ✅ Panel generated: {result_path}")
+            print(f"  📊 File size: {file_size:,} bytes")
+
+            # Clean up test file
+            try:
+                Path(result_path).unlink()
+                # Also clean up the directory if it's empty
+                output_dir = Path(result_path).parent
+                if output_dir.exists() and not any(output_dir.iterdir()):
+                    output_dir.rmdir()
+                print(f"  🧹 Cleaned up test files")
+            except:
+                pass
+
+            return True
+        else:
+            print(f"  ❌ Panel generation failed: {result_path}")
+            return False
+
+    except Exception as e:
+        print(f"  ❌ Text-to-panel script error: {e}")
+        return False
+
+
 def main():
     """Main test runner."""
     print("MangaGen Self-Test Suite")
     print("=" * 40)
-    
+
     tests = [
         ("Directory Structure", check_directory_structure),
         ("Dependencies", check_dependencies),
         ("LLM Module", test_llm_module),
         ("Prompt Builder", test_prompt_builder),
         ("Image Generation", test_image_generation),
+        ("Automation Functions", test_automation_functions),
+        ("Text-to-Panel Script", test_text_to_panel_script),
         ("Full Pipeline", test_full_pipeline)
     ]
     

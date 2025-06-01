@@ -1,0 +1,11 @@
+[33mc58b798[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m docs: add Phase 3 completion summary and update gitignore
+[33m7594ebe[m refactor: reorganize project structure and add automation stubs
+[33m09a738d[m[33m ([m[1;31morigin/master[m[33m)[m Add ComfyUI workflow JSON files for manga generation
+[33mca17211[m Add ComfyUI workflows and automation for manga panel generation
+[33m759c81e[m rewrite README with clearer structure and more context
+[33m88fb56a[m Updated README with setup and usage instructions
+[33mc9944a8[m Created test and demo scripts for full pipeline
+[33m5f49514[m Added image generator with ComfyUI integration and fallback
+[33mf37756c[m Implemented prompt builder for SD manga prompts
+[33ma088528[m Added story generator using OpenRouter API
+[33meafe288[m Initial project structure and virtual environment setup

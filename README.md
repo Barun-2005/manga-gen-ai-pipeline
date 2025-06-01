@@ -203,6 +203,12 @@ Generate sample panels:
 python scripts/generate_sample_panels.py
 ```
 
+Generate single panel from text:
+```bash
+python scripts/generate_from_prompt.py "ninja dodging kunai"
+python scripts/generate_from_prompt.py "girl reading book" --style shoujo
+```
+
 Or run components manually:
 ```bash
 python llm/story_generator.py
