@@ -28,17 +28,29 @@ This project is still under active development, and many features are subject to
 ## Project Layout
 
 ```
-MangaGen/
+manga-gen-ai-pipeline/
+├── workflows/
+│   └── manga/              # ComfyUI workflow templates
+├── assets/
+│   └── styles/             # Style presets and configurations
+├── scripts/                # Utility and generation scripts
+│   ├── generate_sample_panels.py
+│   └── self_test.py
+├── examples/               # Example configurations and prompts
+├── outputs/                # Generated images and manga
+│   └── 2025-06-01/        # Date-organized outputs
+├── manga_archive/          # Completed manga storage
 ├── llm/                    # Language model story generation
 │   ├── story_generator.py
 │   └── prompt_templates.py
 ├── image_gen/              # ComfyUI-based image generation
 │   ├── comfy_client.py
-│   └── prompt_builder.py
+│   ├── prompt_builder.py
+│   └── image_generator.py
 ├── pipeline/               # Main orchestration logic
 │   ├── generate_manga.py
+│   ├── automation_stubs.py
 │   └── utils.py
-├── output/                 # Generated stories and images
 ├── .env                    # Environment configuration
 ├── requirements.txt
 └── README.md
@@ -155,7 +167,7 @@ IMAGE_HEIGHT=768
 DEFAULT_GENRE=shonen
 RANDOM_SEED=-1
 
-OUTPUT_DIR=./output
+OUTPUT_DIR=./outputs
 LOG_LEVEL=INFO
 ```
 
@@ -180,8 +192,15 @@ Modify `llm/prompt_templates.py`.
 Extend logic in `image_gen/prompt_builder.py`.
 
 ### Run Tests
+
+Comprehensive self-test:
 ```bash
-python -m pytest tests/
+python scripts/self_test.py
+```
+
+Generate sample panels:
+```bash
+python scripts/generate_sample_panels.py
 ```
 
 Or run components manually:

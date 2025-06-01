@@ -53,8 +53,8 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Project Specific
-output/
+# Project Specific - Generated Files
+outputs/
 *.png
 *.jpg
 *.jpeg

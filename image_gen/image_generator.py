@@ -6,15 +6,13 @@ Sends prompts to ComfyUI and manages image saving and file organization.
 """
 
 import os
-import json
 import time
-import uuid
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from dotenv import load_dotenv
 
 # Import our ComfyUI client
-from .comfy_client import ComfyUIClient, create_basic_txt2img_workflow
+from .comfy_client import ComfyUIClient
 
 load_dotenv()
 
@@ -52,7 +50,7 @@ def generate_image(prompt: str, index: int) -> str:
         )
         
         # Generate image
-        output_dir = Path("output/images")
+        output_dir = Path("outputs")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         image_paths = client.generate_images(workflow, str(output_dir))
@@ -244,7 +242,7 @@ def _create_placeholder_image(index: int) -> str:
         draw.text((x, y), text, fill='black', font=font)
         
         # Save the image
-        output_dir = Path("output/images")
+        output_dir = Path("outputs")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         image_path = output_dir / f"panel_{index:02d}.png"
@@ -256,7 +254,7 @@ def _create_placeholder_image(index: int) -> str:
     except Exception as e:
         print(f"Error creating placeholder image: {e}")
         # Return a simple text file as last resort
-        output_dir = Path("output/images")
+        output_dir = Path("outputs")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         placeholder_path = output_dir / f"panel_{index:02d}.txt"
@@ -343,7 +341,7 @@ def cleanup_temp_files(keep_panels: bool = True) -> None:
     Args:
         keep_panels: Whether to keep the final panel images
     """
-    output_dir = Path("output/images")
+    output_dir = Path("outputs")
     
     if not output_dir.exists():
         return
