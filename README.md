@@ -1,150 +1,67 @@
-# MangaGen - AI Manga Generation Pipeline
+# MangaGen
 
-A complete pipeline for generating manga panels with AI, featuring organized output management, emotion extraction, and validation systems.
+manga panel generator using comfyui and some python scripts
 
-## 🚀 Quick Start
+## setup
 
-### Single Command Pipeline
+need python 3.10+ and comfyui running on localhost:8188
+
 ```bash
-# Generate from inline prompt
-python scripts/run_full_pipeline.py --prompt "ninja discovers ancient temple"
+pip install -r requirements.txt
+```
 
-# Generate from prompt files (default)
+## usage
+
+```bash
+# basic generation
+python scripts/run_full_pipeline.py --prompt "ninja in forest"
+
+# or just run with default prompts
 python scripts/run_full_pipeline.py
 
-# Generate with custom name
-python scripts/run_full_pipeline.py --run-name "my_manga_story"
-```
-
-### View Results
-```bash
-# List recent runs
+# see what you made
 python scripts/run_full_pipeline.py --list-runs
-
-# Browse outputs in: outputs/runs/run_YYYYMMDD_HHMMSS/
 ```
 
-## 📁 Project Structure
+## what it does
+
+generates manga panels and tries to organize the output so you don't lose track of stuff
+
+- makes base panels from prompts
+- does some emotion analysis on dialogue
+- validates the panels look decent
+- puts everything in organized folders
+
+## folder structure
 
 ```
-MangaGen/
-├── 🚀 scripts/
-│   └── run_full_pipeline.py          # ⭐ MAIN ENTRY POINT
-├── 🧠 core/                          # Core pipeline modules
-│   ├── emotion_extractor.py          # Emotion analysis
-│   ├── local_flow_checker.py         # Visual flow validation
-│   ├── coherence_analyzer.py         # Coherence analysis
-│   └── output_manager.py             # Output organization
-├── 🎨 image_gen/                     # Image generation
-├── 🤖 llm/                           # LLM integration
-├── ⚙️  pipeline/                      # Pipeline automation
-├── 📦 assets/                        # Prompts and workflows
-├── ⚙️  config/                       # Configuration
-├── 🧪 tests/                         # Test cases (protected)
-├── 📁 outputs/runs/                  # ⭐ ORGANIZED OUTPUT
-└── 📦 archive/                       # Old outputs (hidden)
+scripts/run_full_pipeline.py  # main script
+core/                         # pipeline modules
+image_gen/                    # comfyui integration
+assets/                       # prompts and workflows
+outputs/runs/                 # where your panels go
 ```
 
-## 🎯 Features
+## config
 
-### ✅ Complete Pipeline
-- **Single Command**: Run entire pipeline with one script
-- **Organized Output**: Clean folder structure per run
-- **Auto Cleanup**: Configurable run retention
-- **Progress Tracking**: Real-time status updates
+edit `config/output_config.json` if you want to change how many runs to keep around
 
-### ✅ Panel Generation
-- **Base Panels**: Standard manga style generation
-- **Enhanced Panels**: Layout-enhanced with memory
-- **Meaningful Names**: Descriptive filenames from prompts
-- **ComfyUI Integration**: Local generation with workflow
-
-### ✅ Analysis & Validation
-- **Emotion Extraction**: Dialogue emotion analysis
-- **Coherence Validation**: Panel consistency checking
-- **Quality Metrics**: Automated scoring
-- **Detailed Reports**: Human-readable results
-
-### ✅ Output Management
-- **Versioned Runs**: No overwrites, auto-increment
-- **Clean Structure**: Everything organized per run
-- **Easy Browsing**: Find results quickly
-- **Configurable**: Customize retention and naming
-
-## ⚙️ Configuration
-
-Edit `config/output_config.json`:
-
-```json
-{
-  "max_saved_runs": 10,
-  "panel_naming_style": "descriptive",
-  "auto_cleanup": true
-}
-```
-
-## 🧪 Testing
+## testing
 
 ```bash
-# Run all tests
 python tests/test_pipeline.py
 ```
 
-## 📋 Usage Examples
+## output
 
-### Basic Generation
-```bash
-# Simple prompt
-python scripts/run_full_pipeline.py --prompt "samurai in bamboo forest"
+each run makes a folder like `outputs/runs/run_20250603_123456/` with your panels and some analysis files
 
-# Custom run name
-python scripts/run_full_pipeline.py --prompt "ninja adventure" --run-name "episode_01"
-```
+## requirements
 
-### Advanced Usage
-```bash
-# Custom prompt files
-python scripts/run_full_pipeline.py \
-  --base-prompts my_base.txt \
-  --enhanced-prompts my_enhanced.txt \
-  --run-name "custom_story"
+- python 3.10+
+- comfyui running on localhost:8188
+- install deps with `pip install -r requirements.txt`
 
-# List and cleanup
-python scripts/run_full_pipeline.py --list-runs
-python scripts/run_full_pipeline.py --cleanup
-```
+## notes
 
-### Output Structure
-Each run creates:
-```
-outputs/runs/run_YYYYMMDD_HHMMSS/
-├── panels/
-│   ├── base/panel_001_scene_description.png
-│   └── enhanced/panel_001_scene_description.png
-├── validation/scores/validation_scores_TIMESTAMP.json
-├── emotions/emotion_labels.json
-└── run_summary.json
-```
-
-## 🔧 Requirements
-
-- **Python 3.10+**
-- **ComfyUI** running at `http://127.0.0.1:8188`
-- **Dependencies**: `pip install -r requirements.txt`
-
-## 🎯 Success Criteria Met
-
-- ✅ **Single Entry Point**: `run_full_pipeline.py` handles everything
-- ✅ **Clean Output**: One folder per run with organized structure
-- ✅ **No Clutter**: Auto-cleanup prevents accumulation
-- ✅ **Easy Browsing**: Clear naming and organization
-- ✅ **Protected Tests**: Test folder safe from cleanup
-- ✅ **Archived History**: Old outputs moved to archive
-
-## 🚀 Ready to Use
-
-The pipeline is now a stable, professional tool ready for manga generation!
-
----
-
-*Generated by MangaGen Pipeline v1.0*
+this is a work in progress, some features might be rough around the edges
