@@ -10,6 +10,9 @@ import json
 import random
 import logging
 import hashlib
+import re
+import cv2
+import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
@@ -400,16 +403,260 @@ class ProgressTracker:
             print()  # New line when complete
 
 
+def clean_visual_prompt(raw_text: str) -> str:
+    """
+    Clean raw story text to extract only visual elements for image generation.
+
+    Removes dialogue, narrative boxes, sound effects, and other non-visual content
+    to create focused prompts suitable for ComfyUI.
+
+    Args:
+        raw_text: Raw scene text with dialogue, narrative, etc.
+
+    Returns:
+        Clean visual description suitable for image generation
+    """
+    if not raw_text:
+        return ""
+
+    # Remove lines starting with dialogue/narrative/sound effect markers
+    lines = raw_text.split('\n')
+    visual_lines = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Skip lines with dialogue/narrative/sound effect markers
+        skip_patterns = [
+            r'^Dialogue:',
+            r'^Narrative Box:',
+            r'^Sound Effect:',
+            r'^\*\*Dialogue\*\*',
+            r'^\*\*Narrative\*\*',
+            r'^\*\*Sound Effect\*\*',
+            r'^\*\*SFX\*\*',
+            r'^\*\*NARRATION',
+            r'^\*\*THE [A-Z]+\*\*',  # Character speech
+            r'^\*\*[A-Z]+\*\*:',     # Character names
+        ]
+
+        should_skip = False
+        for pattern in skip_patterns:
+            if re.match(pattern, line, re.IGNORECASE):
+                should_skip = True
+                break
+
+        if should_skip:
+            continue
+
+        # Remove content in quotes (dialogue)
+        line = re.sub(r'"[^"]*"', '', line)
+        line = re.sub(r"'[^']*'", '', line)
+
+        # Remove content between asterisks (sound effects/emphasis)
+        line = re.sub(r'\*[^*]*\*', '', line)
+
+        # Remove markdown formatting
+        line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)  # Bold
+        line = re.sub(r'\*([^*]+)\*', r'\1', line)      # Italic
+        line = re.sub(r'#{1,6}\s*', '', line)           # Headers
+
+        # Remove panel/scene markers
+        line = re.sub(r'^\*\*Panel \d+.*?\*\*', '', line)
+        line = re.sub(r'^\*\*Scene \d+.*?\*\*', '', line)
+        line = re.sub(r'^\d+\.\s*\*\*Panel.*?\*\*', '', line)
+
+        # Clean up extra whitespace
+        line = re.sub(r'\s+', ' ', line).strip()
+
+        if line and len(line) > 10:  # Only keep substantial content
+            visual_lines.append(line)
+
+    # Join visual elements and create focused description
+    visual_content = ' '.join(visual_lines)
+
+    # Extract key visual elements
+    visual_elements = []
+
+    # Look for character descriptions
+    char_match = re.search(r'([A-Z][a-z]+)\s*\([^)]*\)', visual_content)
+    if char_match:
+        visual_elements.append(char_match.group(0))
+
+    # Look for setting/environment descriptions
+    setting_keywords = ['room', 'city', 'street', 'building', 'sky', 'forest', 'house', 'orphanage']
+    for keyword in setting_keywords:
+        if keyword in visual_content.lower():
+            # Extract sentence containing the keyword
+            sentences = visual_content.split('.')
+            for sentence in sentences:
+                if keyword in sentence.lower():
+                    visual_elements.append(sentence.strip())
+                    break
+
+    # Look for action/pose descriptions
+    action_keywords = ['kneels', 'stands', 'sits', 'walks', 'runs', 'looks', 'holds', 'reaches']
+    for keyword in action_keywords:
+        if keyword in visual_content.lower():
+            # Extract relevant action context
+            words = visual_content.split()
+            for i, word in enumerate(words):
+                if keyword in word.lower():
+                    # Get context around the action
+                    start = max(0, i-3)
+                    end = min(len(words), i+4)
+                    action_context = ' '.join(words[start:end])
+                    visual_elements.append(action_context)
+                    break
+
+    # Combine and clean final prompt
+    if visual_elements:
+        clean_prompt = ', '.join(visual_elements)
+    else:
+        # Fallback: use first substantial sentence
+        sentences = visual_content.split('.')
+        clean_prompt = sentences[0] if sentences else visual_content
+
+    # Final cleanup and length limit
+    clean_prompt = re.sub(r'\s+', ' ', clean_prompt).strip()
+    clean_prompt = clean_prompt[:200]  # Limit to 200 characters
+
+    # Add manga style suffix if not present
+    if 'manga' not in clean_prompt.lower():
+        clean_prompt += ', manga style'
+
+    return clean_prompt
+
+
+def detect_faces(image_path: str) -> int:
+    """
+    Detect number of faces in an image using OpenCV Haar Cascade.
+
+    Args:
+        image_path: Path to image file
+
+    Returns:
+        Number of faces detected
+    """
+    try:
+        # Load the image
+        image = cv2.imread(image_path)
+        if image is None:
+            return 0
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Load face cascade classifier
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        # Detect faces
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        return len(faces)
+
+    except Exception as e:
+        print(f"Error detecting faces in {image_path}: {e}")
+        return 0
+
+
+def detect_blur(image_path: str) -> float:
+    """
+    Detect blur in an image using Variance of Laplacian method.
+
+    Args:
+        image_path: Path to image file
+
+    Returns:
+        Blur score (higher = less blurry)
+    """
+    try:
+        # Load the image
+        image = cv2.imread(image_path)
+        if image is None:
+            return 0.0
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Calculate Laplacian variance
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+        return float(laplacian_var)
+
+    except Exception as e:
+        print(f"Error detecting blur in {image_path}: {e}")
+        return 0.0
+
+
+def detect_pose_keypoints(image_path: str) -> int:
+    """
+    Detect pose keypoints in an image using basic contour detection.
+
+    This is a simplified implementation. For production, consider using
+    OpenPose or MediaPipe for more accurate pose detection.
+
+    Args:
+        image_path: Path to image file
+
+    Returns:
+        Number of significant contours/keypoints detected
+    """
+    try:
+        # Load the image
+        image = cv2.imread(image_path)
+        if image is None:
+            return 0
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Apply edge detection
+        edges = cv2.Canny(gray, 50, 150)
+
+        # Find contours
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Count significant contours (potential body parts)
+        significant_contours = 0
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 100:  # Filter out small noise
+                significant_contours += 1
+
+        return significant_contours
+
+    except Exception as e:
+        print(f"Error detecting pose keypoints in {image_path}: {e}")
+        return 0
+
+
 if __name__ == "__main__":
     # Example usage
     logger = setup_logging("INFO")
     logger.info("Utils module loaded successfully")
-    
+
+    # Test prompt cleaning
+    test_prompt = '''
+    **Sora Hikari:** 14, fiery red hair, expressive amber eyes, wears a worn hoodie and jeans.
+    **Panel 1**
+    **Visual:** Wide shot of St. Agnes Orphanage's cluttered common room.
+    **Narrative Box:** *Sora's hands moved fiercely—like her temper.*
+    **Sound Effect:** *CLINK-CLANK* (tools fumbling)
+    **Dialogue:** "This is so frustrating!"
+    '''
+
+    cleaned = clean_visual_prompt(test_prompt)
+    print(f"Original: {test_prompt}")
+    print(f"Cleaned: {cleaned}")
+
     # Test progress tracker
     import time
     tracker = ProgressTracker(10, "Testing")
     for i in range(10):
         time.sleep(0.1)
         tracker.update()
-    
+
     print("Utils module test completed")

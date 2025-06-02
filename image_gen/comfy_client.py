@@ -47,49 +47,82 @@ class ComfyUIClient:
         except requests.exceptions.RequestException:
             return False
     
+    def safe_generate(self, url: str, payload: Dict[str, Any], method: str = "POST") -> requests.Response:
+        """
+        Make HTTP request with exponential backoff for rate limiting.
+
+        Args:
+            url: Request URL
+            payload: Request payload
+            method: HTTP method (POST, GET)
+
+        Returns:
+            Response object
+        """
+        retries = 0
+        while retries < 5:
+            try:
+                if method.upper() == "POST":
+                    response = self.session.post(url, json=payload, timeout=self.timeout)
+                else:
+                    response = self.session.get(url, timeout=self.timeout)
+
+                if response.status_code == 429:
+                    wait_time = 2 ** retries  # 1s, 2s, 4s, 8s, 16s
+                    print(f"Rate limited, waiting {wait_time}s before retry {retries + 1}/5...")
+                    time.sleep(wait_time)
+                    retries += 1
+                    continue
+
+                response.raise_for_status()
+                return response
+
+            except requests.exceptions.RequestException as e:
+                if retries >= 4:  # Last retry
+                    raise Exception(f"Request failed after 5 retries: {e}")
+                retries += 1
+                wait_time = 2 ** retries
+                print(f"Request error, waiting {wait_time}s before retry {retries}/5...")
+                time.sleep(wait_time)
+
+        raise Exception("Rate limit exceeded after 5 retries")
+
     def queue_prompt(self, workflow: Dict[str, Any]) -> str:
         """
         Queue a workflow for execution.
-        
+
         Args:
             workflow: ComfyUI workflow definition
-            
+
         Returns:
             Prompt ID for tracking execution
         """
         prompt_id = str(uuid.uuid4())
-        
+
         payload = {
             "prompt": workflow,
             "client_id": prompt_id
         }
-        
+
         try:
-            response = self.session.post(
-                f"{self.base_url}/prompt",
-                json=payload,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            
+            response = self.safe_generate(f"{self.base_url}/prompt", payload, "POST")
             result = response.json()
             return result.get("prompt_id", prompt_id)
-            
-        except requests.exceptions.RequestException as e:
+
+        except Exception as e:
             raise Exception(f"Error queuing prompt: {e}")
     
     def get_queue_status(self) -> Dict[str, Any]:
         """
         Get current queue status.
-        
+
         Returns:
             Queue status information
         """
         try:
-            response = self.session.get(f"{self.base_url}/queue")
-            response.raise_for_status()
+            response = self.safe_generate(f"{self.base_url}/queue", {}, "GET")
             return response.json()
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             raise Exception(f"Error getting queue status: {e}")
     
     def wait_for_completion(self, prompt_id: str, check_interval: int = 2) -> bool:
@@ -122,22 +155,21 @@ class ComfyUIClient:
     def get_history(self, prompt_id: str = None) -> Dict[str, Any]:
         """
         Get execution history.
-        
+
         Args:
             prompt_id: Specific prompt ID to get history for
-            
+
         Returns:
             History data
         """
         url = f"{self.base_url}/history"
         if prompt_id:
             url += f"/{prompt_id}"
-        
+
         try:
-            response = self.session.get(url)
-            response.raise_for_status()
+            response = self.safe_generate(url, {}, "GET")
             return response.json()
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             raise Exception(f"Error getting history: {e}")
     
     def get_images(self, prompt_id: str) -> List[Tuple[str, bytes]]:

@@ -14,9 +14,13 @@ from .utils import (
     ensure_directory,
     clean_filename,
     timestamp_string,
-    ProgressTracker
+    ProgressTracker,
+    clean_visual_prompt,
+    detect_faces,
+    detect_blur,
+    detect_pose_keypoints
 )
-from .prompt_builder import build_image_prompts, create_panel_sequence_prompts, enhance_prompt_for_style
+# prompt_builder functionality moved to image_gen module
 
 __all__ = [
     "MangaGenerator",
@@ -29,7 +33,8 @@ __all__ = [
     "clean_filename",
     "timestamp_string",
     "ProgressTracker",
-    "build_image_prompts",
-    "create_panel_sequence_prompts",
-    "enhance_prompt_for_style"
+    "clean_visual_prompt",
+    "detect_faces",
+    "detect_blur",
+    "detect_pose_keypoints"
 ]

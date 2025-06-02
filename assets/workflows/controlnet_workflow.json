@@ -1,0 +1,110 @@
+{
+  "1": {
+    "inputs": {
+      "text": "PROMPT_PLACEHOLDER",
+      "clip": ["4", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "text": "blurry, low quality, distorted, bad anatomy, worst quality, low quality, normal quality, lowres, bad hands, bad fingers, missing fingers, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, ugly, blurry, bad proportions, extra limbs, cloned face, disfigured, out of frame, ugly, extra limbs, bad anatomy, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, mutated hands, fused fingers, too many fingers, long neck",
+      "clip": ["4", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "seed": 42,
+      "steps": 25,
+      "cfg": 7.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0,
+      "model": ["9", 0],
+      "positive": ["1", 0],
+      "negative": ["2", 0],
+      "latent_image": ["5", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 768,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["4", 2]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "7": {
+    "inputs": {
+      "filename_prefix": "manga_panel",
+      "images": ["6", 0]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "8": {
+    "inputs": {
+      "control_net_name": "CONTROLNET_MODEL_PLACEHOLDER"
+    },
+    "class_type": "ControlNetLoader",
+    "_meta": {
+      "title": "Load ControlNet Model"
+    }
+  },
+  "9": {
+    "inputs": {
+      "strength": 0.8,
+      "conditioning": ["1", 0],
+      "control_net": ["8", 0],
+      "image": ["10", 0]
+    },
+    "class_type": "ControlNetApply",
+    "_meta": {
+      "title": "Apply ControlNet"
+    }
+  },
+  "10": {
+    "inputs": {
+      "image": "REFERENCE_IMAGE_PLACEHOLDER"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Reference Image"
+    }
+  }
+}

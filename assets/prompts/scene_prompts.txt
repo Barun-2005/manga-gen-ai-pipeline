@@ -1,0 +1,6 @@
+# Sample Scene Prompts for Testing
+# Temple Discovery Scene - 3 panels with visual coherence
+
+ninja approaches ancient temple entrance, dramatic lighting, mysterious atmosphere
+ninja examines mysterious symbols carved on temple wall, focused expression, close-up view
+ninja discovers hidden chamber behind wall, surprised expression, wide shot revealing chamber

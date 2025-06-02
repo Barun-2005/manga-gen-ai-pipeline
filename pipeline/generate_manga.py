@@ -99,12 +99,30 @@ class MangaGenerator:
         # Get genre modifiers
         genre_info = get_genre_modifier(genre)
         
-        # Generate structured story
-        story_data = self.story_generator.generate_structured_story(
-            prompt=prompt,
-            acts=acts,
-            scenes_per_act=scenes_per_act
-        )
+        # Generate structured story with fallback
+        try:
+            story_data = self.story_generator.generate_structured_story(
+                prompt=prompt,
+                acts=acts,
+                scenes_per_act=scenes_per_act
+            )
+        except Exception as e:
+            self.logger.warning(f"LLM story generation failed: {e}, using fallback")
+            # Use fallback story generation from story_generator module
+            from llm.story_generator import generate_story
+            story_paragraphs = generate_story(prompt, genre)
+            story_data = {
+                "title": "Generated Manga Story",
+                "prompt": prompt,
+                "story_text": "\n\n".join(story_paragraphs),
+                "scenes": story_paragraphs,
+                "acts": acts,
+                "scenes_per_act": scenes_per_act,
+                "metadata": {
+                    "model": "fallback",
+                    "generated_at": None
+                }
+            }
         
         # Add genre information
         story_data["genre"] = genre

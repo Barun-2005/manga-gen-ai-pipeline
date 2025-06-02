@@ -20,6 +20,9 @@ from datetime import datetime
 from llm.story_generator import StoryGenerator
 from pipeline.automation_stubs import generate_pose_from_text, assign_style_automatically
 from scripts.generate_from_prompt import generate_manga_panel
+from scripts.place_dialogue import place_dialogue
+from scripts.compile_pdf import compile_manga_pdf
+from pipeline.utils import clean_visual_prompt
 
 
 class MangaStoryStructurer:
@@ -27,7 +30,7 @@ class MangaStoryStructurer:
     Handles story structuring and chapter planning for manga generation.
     """
     
-    def __init__(self, model: str = "deepseek/deepseek-r1-distill-llama-70b"):
+    def __init__(self, model: str = "deepseek/deepseek-r1-0528:free"):
         """Initialize the story structurer."""
         self.story_generator = StoryGenerator(model)
         
@@ -178,7 +181,7 @@ class DialogAssigner:
     Handles dialog and narration assignment for manga scenes.
     """
     
-    def __init__(self, model: str = "deepseek/deepseek-r1-distill-llama-70b"):
+    def __init__(self, model: str = "deepseek/deepseek-r1-0528:free"):
         """Initialize the dialog assigner."""
         self.story_generator = StoryGenerator(model)
     
@@ -298,75 +301,125 @@ class MangaPanelPipeline:
         with open(output_path / "manga_results.json", 'w') as f:
             json.dump(manga_results, f, indent=2)
         
+        # Compile PDF from generated panels
+        print(f"\n📚 Compiling manga PDF...")
+        try:
+            pdf_path = compile_manga_pdf(str(output_path))
+            manga_results["pdf_path"] = pdf_path
+            print(f"✅ PDF compiled: {pdf_path}")
+        except Exception as e:
+            print(f"⚠️  PDF compilation failed: {e}")
+            manga_results["pdf_path"] = None
+
         print(f"\n🎉 Manga generation complete!")
         print(f"📁 Output: {output_path}")
         print(f"🖼️  Total panels: {manga_results['total_panels_generated']}")
-        
+        if manga_results.get("pdf_path"):
+            print(f"📚 PDF: {manga_results['pdf_path']}")
+
         return manga_results
     
     def _process_chapter(self, chapter: Dict[str, Any], chapter_num: int, output_path: Path) -> Dict[str, Any]:
-        """Process a single chapter into manga panels."""
+        """Process a single chapter into manga panels with dialogue bubbles."""
         chapter_dir = output_path / f"chapter_{chapter_num:02d}"
         chapter_dir.mkdir(exist_ok=True)
-        
+
+        # Create subdirectory for panels with dialogue bubbles
+        bubbles_dir = chapter_dir / "with_bubbles"
+        bubbles_dir.mkdir(exist_ok=True)
+
         chapter_results = {
             "title": chapter["title"],
             "scenes": [],
             "panels_generated": 0
         }
-        
+
         for scene_idx, scene in enumerate(chapter["scenes"]):
             print(f"  🎬 Scene {scene_idx + 1}: {scene['description'][:50]}...")
-            
+
+            # Clean the scene description for image generation
+            cleaned_description = clean_visual_prompt(scene["description"])
+
             # Assign dialog and narration
             dialog_data = self.dialog_assigner.assign_dialog_and_narration(scene["description"])
-            
-            # Generate panel(s) for this scene
-            panel_prompt = f"{scene['description']} {dialog_data['dialog_content']}"
-            
+
+            # Extract character names for reference image selection
+            scene_characters = []
+            if "Sora" in scene["description"] or "Sora Hikari" in scene["description"]:
+                scene_characters.append("Sora Hikari")
+
             try:
+                # Generate panel using CLEANED description (no dialogue contamination)
                 panel_path = generate_manga_panel(
-                    text_prompt=panel_prompt,
+                    text_prompt=cleaned_description,  # Use cleaned prompt
                     pose_override=None,  # Auto-detect
                     style_override=None,  # Auto-detect
                     seed=None
                 )
-                
+
                 # Move panel to chapter directory
                 if panel_path and Path(panel_path).exists():
                     final_panel_path = chapter_dir / f"scene_{scene_idx + 1:02d}.png"
                     Path(panel_path).rename(final_panel_path)
-                    
+
+                    # Add dialogue bubbles if there's dialogue
+                    dialogue_lines = []
+                    if dialog_data.get("has_dialog") and dialog_data.get("dialog_content"):
+                        # Extract dialogue lines from dialog content
+                        dialog_text = dialog_data["dialog_content"]
+                        # Simple extraction - look for quoted text
+                        import re
+                        quotes = re.findall(r'"([^"]*)"', dialog_text)
+                        dialogue_lines.extend(quotes)
+
+                    # Create panel with dialogue bubbles
+                    bubble_panel_path = bubbles_dir / f"scene_{scene_idx + 1:02d}.png"
+                    bubble_success = place_dialogue(
+                        str(final_panel_path),
+                        dialogue_lines,
+                        str(bubble_panel_path)
+                    )
+
                     scene_result = {
                         "scene_number": scene_idx + 1,
                         "description": scene["description"],
+                        "cleaned_description": cleaned_description,
                         "dialog_data": dialog_data,
+                        "dialogue_lines": dialogue_lines,
                         "panel_path": str(final_panel_path),
-                        "generation_success": True
+                        "bubble_panel_path": str(bubble_panel_path) if bubble_success else None,
+                        "generation_success": True,
+                        "bubble_success": bubble_success
                     }
                     chapter_results["panels_generated"] += 1
                 else:
                     scene_result = {
                         "scene_number": scene_idx + 1,
                         "description": scene["description"],
+                        "cleaned_description": cleaned_description,
                         "dialog_data": dialog_data,
                         "panel_path": None,
+                        "bubble_panel_path": None,
                         "generation_success": False,
+                        "bubble_success": False,
                         "error": "Panel generation failed"
                     }
-                
+
             except Exception as e:
                 scene_result = {
                     "scene_number": scene_idx + 1,
                     "description": scene["description"],
+                    "cleaned_description": cleaned_description if 'cleaned_description' in locals() else None,
                     "dialog_data": dialog_data,
                     "panel_path": None,
+                    "bubble_panel_path": None,
                     "generation_success": False,
+                    "bubble_success": False,
                     "error": str(e)
                 }
-            
+
             chapter_results["scenes"].append(scene_result)
-        
+
         return chapter_results
 
 
