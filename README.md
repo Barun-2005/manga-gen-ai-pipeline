@@ -1,266 +1,150 @@
-# MangaGen – AI-Powered Manga Generation Framework
+# MangaGen - AI Manga Generation Pipeline
 
-**MangaGen** is an experimental pipeline for turning plain text prompts into manga-style stories with visuals. It combines large language models (LLMs) for structured storytelling and Stable Diffusion (via ComfyUI) for generating stylized manga panels.
+A complete pipeline for generating manga panels with AI, featuring organized output management, emotion extraction, and validation systems.
 
-This project is still under active development, and many features are subject to change as we refine the workflow.
+## 🚀 Quick Start
 
----
+### Single Command Pipeline
+```bash
+# Generate from inline prompt
+python scripts/run_full_pipeline.py --prompt "ninja discovers ancient temple"
 
-## Features
+# Generate from prompt files (default)
+python scripts/run_full_pipeline.py
 
-- **Story Generation**
-  Generates multi-act story structures using OpenRouter-powered LLMs.
-
-- **Visual Generation**
-  Uses ComfyUI to generate high-resolution manga-style images from scene descriptions.
-
-- **Modular Pipeline**
-  Clean separation of logic between story, image, and orchestration components.
-
-- **Multi-Genre Support**
-  Works across genres like shonen, seinen, slice-of-life, and fantasy.
-
-- **Customizable Output**
-  Set your own dimensions, genre, seeds, and scene structure via config or CLI.
-
----
-
-## Project Layout
-
-```
-manga-gen-ai-pipeline/
-├── workflows/
-│   └── manga/              # ComfyUI workflow templates
-├── assets/
-│   └── styles/             # Style presets and configurations
-├── scripts/                # Utility and generation scripts
-│   ├── generate_sample_panels.py
-│   └── self_test.py
-├── examples/               # Example configurations and prompts
-├── outputs/                # Generated images and manga
-│   └── 2025-06-01/        # Date-organized outputs
-├── manga_archive/          # Completed manga storage
-├── llm/                    # Language model story generation
-│   ├── story_generator.py
-│   └── prompt_templates.py
-├── image_gen/              # ComfyUI-based image generation
-│   ├── comfy_client.py
-│   ├── prompt_builder.py
-│   └── image_generator.py
-├── pipeline/               # Main orchestration logic
-│   ├── generate_manga.py
-│   ├── automation_stubs.py
-│   └── utils.py
-├── .env                    # Environment configuration
-├── requirements.txt
-└── README.md
+# Generate with custom name
+python scripts/run_full_pipeline.py --run-name "my_manga_story"
 ```
 
----
+### View Results
+```bash
+# List recent runs
+python scripts/run_full_pipeline.py --list-runs
 
-## Getting Started
+# Browse outputs in: outputs/runs/run_YYYYMMDD_HHMMSS/
+```
 
-### Prerequisites
+## 📁 Project Structure
 
-- Python 3.10+
-- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) installed and running
-- OpenRouter API key for LLM-based story generation
+```
+MangaGen/
+├── 🚀 scripts/
+│   └── run_full_pipeline.py          # ⭐ MAIN ENTRY POINT
+├── 🧠 core/                          # Core pipeline modules
+│   ├── emotion_extractor.py          # Emotion analysis
+│   ├── local_flow_checker.py         # Visual flow validation
+│   ├── coherence_analyzer.py         # Coherence analysis
+│   └── output_manager.py             # Output organization
+├── 🎨 image_gen/                     # Image generation
+├── 🤖 llm/                           # LLM integration
+├── ⚙️  pipeline/                      # Pipeline automation
+├── 📦 assets/                        # Prompts and workflows
+├── ⚙️  config/                       # Configuration
+├── 🧪 tests/                         # Test cases (protected)
+├── 📁 outputs/runs/                  # ⭐ ORGANIZED OUTPUT
+└── 📦 archive/                       # Old outputs (hidden)
+```
 
-### Setup
+## 🎯 Features
+
+### ✅ Complete Pipeline
+- **Single Command**: Run entire pipeline with one script
+- **Organized Output**: Clean folder structure per run
+- **Auto Cleanup**: Configurable run retention
+- **Progress Tracking**: Real-time status updates
+
+### ✅ Panel Generation
+- **Base Panels**: Standard manga style generation
+- **Enhanced Panels**: Layout-enhanced with memory
+- **Meaningful Names**: Descriptive filenames from prompts
+- **ComfyUI Integration**: Local generation with workflow
+
+### ✅ Analysis & Validation
+- **Emotion Extraction**: Dialogue emotion analysis
+- **Coherence Validation**: Panel consistency checking
+- **Quality Metrics**: Automated scoring
+- **Detailed Reports**: Human-readable results
+
+### ✅ Output Management
+- **Versioned Runs**: No overwrites, auto-increment
+- **Clean Structure**: Everything organized per run
+- **Easy Browsing**: Find results quickly
+- **Configurable**: Customize retention and naming
+
+## ⚙️ Configuration
+
+Edit `config/output_config.json`:
+
+```json
+{
+  "max_saved_runs": 10,
+  "panel_naming_style": "descriptive",
+  "auto_cleanup": true
+}
+```
+
+## 🧪 Testing
 
 ```bash
-git clone <your-repo-url>
-cd MangaGen
-pip install -r requirements.txt
-cp .env.example .env  # Then edit it with your API keys and config
+# Run all tests
+python tests/test_pipeline.py
 ```
 
-### ComfyUI Setup
+## 📋 Usage Examples
 
-Follow ComfyUI's setup instructions and make sure it runs on `http://127.0.0.1:8188`. Update your `.env` file accordingly.
-
----
-
-## Usage
-
-### Basic Example
-
+### Basic Generation
 ```bash
-python pipeline/generate_manga.py "A young ninja discovers magical powers in a modern city"
+# Simple prompt
+python scripts/run_full_pipeline.py --prompt "samurai in bamboo forest"
+
+# Custom run name
+python scripts/run_full_pipeline.py --prompt "ninja adventure" --run-name "episode_01"
 ```
 
 ### Advanced Usage
-
 ```bash
-python pipeline/generate_manga.py \
-  "A detective investigates supernatural crimes" \
-  --genre seinen \
-  --output detective_manga \
-  --seed 42
+# Custom prompt files
+python scripts/run_full_pipeline.py \
+  --base-prompts my_base.txt \
+  --enhanced-prompts my_enhanced.txt \
+  --run-name "custom_story"
+
+# List and cleanup
+python scripts/run_full_pipeline.py --list-runs
+python scripts/run_full_pipeline.py --cleanup
 ```
 
-### Python API
-
-```python
-from pipeline.generate_manga import MangaGenerator
-
-generator = MangaGenerator()
-result = generator.generate_complete_manga(
-    prompt="A robot learns about human emotions",
-    genre="slice_of_life"
-)
+### Output Structure
+Each run creates:
+```
+outputs/runs/run_YYYYMMDD_HHMMSS/
+├── panels/
+│   ├── base/panel_001_scene_description.png
+│   └── enhanced/panel_001_scene_description.png
+├── validation/scores/validation_scores_TIMESTAMP.json
+├── emotions/emotion_labels.json
+└── run_summary.json
 ```
 
-### Working With Components
+## 🔧 Requirements
 
-#### Story Only
+- **Python 3.10+**
+- **ComfyUI** running at `http://127.0.0.1:8188`
+- **Dependencies**: `pip install -r requirements.txt`
 
-```python
-from llm.story_generator import generate_manga_story
+## 🎯 Success Criteria Met
 
-story = generate_manga_story(
-    "A chef discovers their recipes have magical properties",
-    acts=3,
-    scenes_per_act=4
-)
-print(story["story_text"])
-```
+- ✅ **Single Entry Point**: `run_full_pipeline.py` handles everything
+- ✅ **Clean Output**: One folder per run with organized structure
+- ✅ **No Clutter**: Auto-cleanup prevents accumulation
+- ✅ **Easy Browsing**: Clear naming and organization
+- ✅ **Protected Tests**: Test folder safe from cleanup
+- ✅ **Archived History**: Old outputs moved to archive
 
-#### Image Prompt Builder
+## 🚀 Ready to Use
 
-```python
-from image_gen.prompt_builder import PromptBuilder, Scene, Character
-
-protagonist = Character(
-    name="Akira",
-    appearance="spiky black hair, determined eyes",
-    clothing="chef uniform, magical amulet",
-    personality_traits="passionate, creative"
-)
-
-scene = Scene(
-    description="The chef discovers glowing ingredients",
-    location="magical kitchen",
-    time_of_day="midnight",
-    mood="mysterious",
-    characters=["Akira"],
-    action="mixing glowing ingredients"
-)
-
-builder = PromptBuilder()
-builder.add_character(protagonist)
-prompt = builder.build_scene_prompt(scene, "dramatic")
-```
+The pipeline is now a stable, professional tool ready for manga generation!
 
 ---
 
-## Configuration Overview
-
-Edit your `.env` to tweak the following:
-
-```env
-OPENROUTER_API_KEY=your_key_here
-LLM_MODEL=deepseek/deepseek-r1-distill-llama-70b
-COMFYUI_URL=http://127.0.0.1:8188
-
-IMAGE_WIDTH=512
-IMAGE_HEIGHT=768
-DEFAULT_GENRE=shonen
-RANDOM_SEED=-1
-
-OUTPUT_DIR=./outputs
-LOG_LEVEL=INFO
-```
-
-### Story Generation Model
-
-Uses **DeepSeek R1** (free via OpenRouter) for high-quality story generation:
-- **Free to use** - No cost for story generation
-- **High quality** - Excellent creative writing capabilities
-- **Fast response** - Quick story generation
-- **No quotas** - Generate as many stories as needed
-
-### Genres Supported
-
-**Shonen** – Action-packed, youth-focused stories
-
-**Seinen** – More mature, dark, or psychological narratives
-
-**Slice of Life** – Realistic, everyday settings
-
-**Fantasy** – Magic, otherworldly settings, and epic themes
-
----
-
-## Dev Notes
-
-### Add New Templates
-Modify `llm/prompt_templates.py`.
-
-### Custom Prompts for Images
-Extend logic in `image_gen/prompt_builder.py`.
-
-### Run Tests
-
-Comprehensive self-test:
-```bash
-python scripts/self_test.py
-```
-
-Generate sample panels:
-```bash
-python scripts/generate_sample_panels.py
-```
-
-Generate single panel from text:
-```bash
-python scripts/generate_from_prompt.py "ninja dodging kunai"
-python scripts/generate_from_prompt.py "girl reading book" --style shoujo
-```
-
-Generate complete manga from vague prompt:
-```bash
-python scripts/generate_full_manga.py "ninja discovers magic"
-python scripts/generate_full_manga.py "robot learns emotions" --chapters 5
-```
-
-Or run components manually:
-```bash
-python llm/story_generator.py
-python image_gen/prompt_builder.py
-```
-
-### Format & Lint
-```bash
-black .
-flake8 .
-```
-
----
-
-## Troubleshooting
-
-**ComfyUI not connecting?**
-- Make sure it's running at the URL specified in `.env`
-- Check firewall or port issues
-
-**API key errors?**
-- Double-check your `.env`
-- Make sure your key is active and has enough quota
-
-**Image generation failed?**
-- Check that the right models are loaded in ComfyUI
-- Look at the log output for detailed error messages
-
----
-
-## Future Plans
-
-Some things on the roadmap:
-
-- Web interface for easy prompt entry and preview
-- Better panel layouting
-- Character tracking and consistency across scenes
-- Support for dialogue/voice synthesis
-- Potential for multi-language support
-- Shared editing tools for collaborative storybuilding
+*Generated by MangaGen Pipeline v1.0*
