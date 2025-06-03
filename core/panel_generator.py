@@ -21,6 +21,8 @@ sys.path.insert(0, str(project_root))
 
 from image_gen.comfy_client import ComfyUIClient
 from core.story_memory import StoryMemoryManager
+from core.emotion_matcher import EmotionMatcher
+from core.pose_matcher import PoseMatcher
 
 class EnhancedPanelGenerator:
     """Enhanced panel generator with ControlNet and T2I Adapter support."""
@@ -37,6 +39,10 @@ class EnhancedPanelGenerator:
         if self.output_config.get("story_memory", {}).get("enabled", False):
             memory_dir = self.output_config["story_memory"]["memory_dir"]
             self.story_memory = StoryMemoryManager(memory_dir=memory_dir)
+
+        # Initialize emotion and pose matchers for Phase 17
+        self.emotion_matcher = EmotionMatcher()
+        self.pose_matcher = PoseMatcher()
         
     def _load_config(self, config_file: str) -> Dict[str, Any]:
         """Load pipeline configuration."""
@@ -415,6 +421,33 @@ class EnhancedPanelGenerator:
                 methods["adapter"].append(control_type)
         
         return methods
+
+    def validate_panel_emotion_pose(self, image_path: str, scene_metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate that a generated panel matches intended emotion and pose.
+
+        Args:
+            image_path: Path to the generated panel image
+            scene_metadata: Scene metadata containing emotion and pose information
+
+        Returns:
+            Combined validation result dictionary
+        """
+        # Validate emotion
+        emotion_result = self.emotion_matcher.validate_panel_emotion(image_path, scene_metadata)
+
+        # Validate pose
+        pose_result = self.pose_matcher.validate_panel_pose(image_path, scene_metadata)
+
+        # Combine results
+        combined_result = {
+            "image_path": image_path,
+            "emotion_validation": emotion_result,
+            "pose_validation": pose_result,
+            "overall_status": "✔️" if (emotion_result["status"] == "✔️" and pose_result["status"] == "✔️") else "❌"
+        }
+
+        return combined_result
 
 def main():
     """Test the enhanced panel generator."""

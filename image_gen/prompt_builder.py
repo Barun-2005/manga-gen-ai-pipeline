@@ -209,6 +209,12 @@ class PromptBuilder:
 
         # Build base prompt
         base_positive_prompt = self.build_scene_prompt(scene)
+
+        # Inject emotion and pose tags for Phase 17 validation
+        base_positive_prompt = self._inject_emotion_pose_tags(
+            base_positive_prompt, scene_description, mood, action
+        )
+
         negative_prompt = self.get_negative_prompt()
 
         # Apply layout enhancement if available
@@ -301,7 +307,30 @@ class PromptBuilder:
             action = "looking"
 
         return location, time_of_day, mood, characters, action
-    
+
+    def _inject_emotion_pose_tags(self, base_prompt: str, scene_description: str,
+                                 mood: str, action: str) -> str:
+        """
+        Inject emotion and pose tags into the prompt for Phase 17 validation.
+
+        Args:
+            base_prompt: Base prompt to enhance
+            scene_description: Scene description text
+            mood: Detected mood/emotion
+            action: Detected action/pose
+
+        Returns:
+            Enhanced prompt with emotion and pose tags
+        """
+        # Create emotion and pose tags
+        emotion_tag = f"[emotion: {mood}]"
+        pose_tag = f"[pose: {action}]"
+
+        # Insert tags at the beginning for better influence
+        enhanced_prompt = f"{emotion_tag}, {pose_tag}, {base_prompt}"
+
+        return enhanced_prompt
+
     def get_negative_prompt(self, additional_negatives: List[str] = None) -> str:
         """
         Get negative prompt with optional additions.
