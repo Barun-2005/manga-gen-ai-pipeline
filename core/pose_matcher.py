@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Pose Matcher Module
+Pose Matcher Module - Phase 17B Production Version
 
 Validates that generated manga panels match the intended character pose
-by comparing intended poses with detected poses from images.
+using MediaPipe for production-quality pose detection.
 """
 
 import cv2
@@ -13,20 +13,32 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 import sys
 import re
+import warnings
+warnings.filterwarnings("ignore")
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from pipeline.utils import detect_pose_keypoints
+try:
+    import mediapipe as mp
+    MEDIAPIPE_AVAILABLE = True
+except ImportError:
+    MEDIAPIPE_AVAILABLE = False
+    print("Warning: MediaPipe not available, falling back to basic detection")
+
+try:
+    from pipeline.utils import detect_pose_keypoints
+except ImportError:
+    detect_pose_keypoints = None
 
 
 class PoseMatcher:
-    """Matches intended poses with detected poses from generated images."""
-    
+    """Matches intended poses with detected poses from generated images using MediaPipe."""
+
     def __init__(self):
         """Initialize the pose matcher."""
-        
+
         # Pose categories and their keywords
         self.pose_keywords = {
             "standing": ["standing", "upright", "vertical", "erect"],
@@ -44,6 +56,25 @@ class PoseMatcher:
             "falling": ["falling", "tumbling", "collapsing", "dropping"],
             "climbing": ["climbing", "ascending", "scaling", "mounting"]
         }
+
+        # Initialize MediaPipe pose detection
+        self.pose_detector = None
+        if MEDIAPIPE_AVAILABLE:
+            try:
+                self.mp_pose = mp.solutions.pose
+                self.pose_detector = self.mp_pose.Pose(
+                    static_image_mode=True,
+                    model_complexity=1,
+                    enable_segmentation=False,
+                    min_detection_confidence=0.5
+                )
+                print("✅ MediaPipe pose detection initialized")
+            except Exception as e:
+                print(f"Warning: Could not initialize MediaPipe: {e}")
+                self.pose_detector = None
+
+        if self.pose_detector is None:
+            print("⚠️ Using fallback pose detection")
         
         # Pose similarity mappings
         self.pose_similarities = {
@@ -107,11 +138,11 @@ class PoseMatcher:
     
     def detect_visual_pose(self, image_path: str) -> Tuple[str, float]:
         """
-        Detect pose from image using basic pose analysis.
-        
+        Detect pose from image using MediaPipe or fallback methods.
+
         Args:
             image_path: Path to the image file
-            
+
         Returns:
             Tuple of (detected_pose, confidence_score)
         """
@@ -120,20 +151,137 @@ class PoseMatcher:
             image = cv2.imread(image_path)
             if image is None:
                 return "standing", 0.0
-            
-            # Use existing pose keypoint detection
-            keypoint_count = detect_pose_keypoints(image_path)
-            
-            # Analyze image dimensions and contours for pose estimation
-            pose, confidence = self._analyze_image_pose(image, keypoint_count)
-            
-            return pose, confidence
-            
+
+            # Try MediaPipe first
+            if self.pose_detector is not None:
+                return self._detect_pose_mediapipe(image)
+
+            # Fallback to basic detection
+            return self._detect_pose_fallback(image)
+
         except Exception as e:
             print(f"Error detecting pose in {image_path}: {e}")
             return "standing", 0.0
+
+    def _detect_pose_mediapipe(self, image: np.ndarray) -> Tuple[str, float]:
+        """
+        Detect pose using MediaPipe.
+
+        Args:
+            image: OpenCV image array (BGR format)
+
+        Returns:
+            Tuple of (pose, confidence)
+        """
+        try:
+            # Convert BGR to RGB for MediaPipe
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            # Process image with MediaPipe
+            results = self.pose_detector.process(rgb_image)
+
+            if not results.pose_landmarks:
+                return "standing", 0.3
+
+            # Extract pose from landmarks
+            pose, confidence = self._classify_pose_from_landmarks(results.pose_landmarks)
+
+            return pose, confidence
+
+        except Exception as e:
+            print(f"Error in MediaPipe pose detection: {e}")
+            return "standing", 0.0
+
+    def _classify_pose_from_landmarks(self, landmarks) -> Tuple[str, float]:
+        """
+        Classify pose from MediaPipe landmarks.
+
+        Args:
+            landmarks: MediaPipe pose landmarks
+
+        Returns:
+            Tuple of (pose, confidence)
+        """
+        try:
+            # Extract key landmark positions
+            landmarks_array = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+
+            # Key landmark indices (MediaPipe pose model)
+            nose = landmarks_array[0]
+            left_shoulder = landmarks_array[11]
+            right_shoulder = landmarks_array[12]
+            left_hip = landmarks_array[23]
+            right_hip = landmarks_array[24]
+            left_knee = landmarks_array[25]
+            right_knee = landmarks_array[26]
+            left_ankle = landmarks_array[27]
+            right_ankle = landmarks_array[28]
+
+            # Calculate pose characteristics
+            shoulder_center = (left_shoulder + right_shoulder) / 2
+            hip_center = (left_hip + right_hip) / 2
+
+            # Vertical alignment (standing vs lying)
+            torso_vertical = abs(shoulder_center[1] - hip_center[1])
+            torso_horizontal = abs(shoulder_center[0] - hip_center[0])
+
+            # Knee positions relative to hips
+            left_knee_below_hip = left_knee[1] > left_hip[1]
+            right_knee_below_hip = right_knee[1] > right_hip[1]
+
+            # Ankle positions relative to knees
+            left_ankle_below_knee = left_ankle[1] > left_knee[1]
+            right_ankle_below_knee = right_ankle[1] > right_knee[1]
+
+            # Classify pose based on landmark relationships
+            if torso_vertical < 0.1:  # Very horizontal torso
+                return "lying", 0.8
+            elif not (left_knee_below_hip and right_knee_below_hip):  # Knees above hips
+                return "jumping", 0.7
+            elif not (left_ankle_below_knee and right_ankle_below_knee):  # Ankles above knees
+                return "sitting", 0.7
+            elif torso_vertical > 0.3:  # Very vertical torso
+                # Check for movement indicators
+                shoulder_width = abs(left_shoulder[0] - right_shoulder[0])
+                hip_width = abs(left_hip[0] - right_hip[0])
+                if abs(shoulder_width - hip_width) > 0.1:
+                    return "walking", 0.6
+                else:
+                    return "standing", 0.8
+            else:
+                return "crouching", 0.6
+
+        except Exception as e:
+            print(f"Error classifying pose from landmarks: {e}")
+            return "standing", 0.3
+
+    def _detect_pose_fallback(self, image: np.ndarray) -> Tuple[str, float]:
+        """
+        Fallback pose detection using basic methods.
+
+        Args:
+            image: OpenCV image array
+
+        Returns:
+            Tuple of (pose, confidence)
+        """
+        try:
+            # Use existing pose keypoint detection if available
+            if detect_pose_keypoints is not None:
+                keypoint_count = detect_pose_keypoints(image)
+            else:
+                keypoint_count = 0
+
+            # Analyze image dimensions and contours for pose estimation
+            pose, confidence = self._analyze_image_pose_basic(image, keypoint_count)
+
+            return pose, confidence
+
+        except Exception as e:
+            print(f"Error in fallback pose detection: {e}")
+            return "standing", 0.0
     
-    def _analyze_image_pose(self, image: np.ndarray, keypoint_count: int) -> Tuple[str, float]:
+    def _analyze_image_pose_basic(self, image: np.ndarray, keypoint_count: int) -> Tuple[str, float]:
         """
         Analyze image for pose using basic heuristics.
         

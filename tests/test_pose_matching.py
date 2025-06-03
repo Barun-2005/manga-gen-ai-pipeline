@@ -115,20 +115,20 @@ class TestPoseMatcher(unittest.TestCase):
         # Create tall, narrow image (standing pose)
         tall_image = np.ones((200, 50, 3), dtype=np.uint8) * 128
         keypoint_count = 10
-        
-        pose, confidence = self.matcher._analyze_image_pose(tall_image, keypoint_count)
-        
+
+        pose, confidence = self.matcher._analyze_image_pose_basic(tall_image, keypoint_count)
+
         # Should detect standing or walking
         self.assertIn(pose, ["standing", "walking"])
         self.assertGreater(confidence, 0.0)
-    
+
     def test_analyze_image_pose_wide_figure(self):
         """Test pose analysis on wide figure (likely lying)."""
         # Create wide, short image (lying pose)
         wide_image = np.ones((50, 200, 3), dtype=np.uint8) * 128
         keypoint_count = 5
 
-        pose, confidence = self.matcher._analyze_image_pose(wide_image, keypoint_count)
+        pose, confidence = self.matcher._analyze_image_pose_basic(wide_image, keypoint_count)
 
         # Should detect some pose with reasonable confidence
         self.assertIsInstance(pose, str)

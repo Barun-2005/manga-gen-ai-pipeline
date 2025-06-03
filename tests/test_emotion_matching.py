@@ -161,22 +161,20 @@ class TestEmotionMatcher(unittest.TestCase):
         """Test emotion analysis on bright image."""
         # Create bright image
         bright_image = np.ones((100, 100, 3), dtype=np.uint8) * 200
-        faces = np.array([[10, 10, 50, 50]])  # Dummy face detection
-        
-        emotion, confidence = self.matcher._analyze_image_emotion(bright_image, faces)
-        
+
+        emotion, confidence = self.matcher._analyze_image_emotion_basic(bright_image)
+
         # Should detect positive emotion for bright image
         self.assertIn(emotion, ["happy", "neutral"])
         self.assertGreater(confidence, 0.0)
-    
+
     def test_analyze_image_emotion_dark_image(self):
         """Test emotion analysis on dark image."""
         # Create dark image
         dark_image = np.ones((100, 100, 3), dtype=np.uint8) * 50
-        faces = np.array([[10, 10, 50, 50]])  # Dummy face detection
-        
-        emotion, confidence = self.matcher._analyze_image_emotion(dark_image, faces)
-        
+
+        emotion, confidence = self.matcher._analyze_image_emotion_basic(dark_image)
+
         # Should detect negative emotion for dark image
         self.assertIn(emotion, ["sad", "neutral"])
         self.assertGreater(confidence, 0.0)
