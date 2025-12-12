@@ -1,0 +1,72 @@
+# MangaGen Requirements - Strict Version Pinning
+# Tested for compatibility with SDXL + IP-Adapter + ControlNet on Kaggle T4 GPU
+# Last updated: 2025-12-12
+
+# ============================================
+# Core AI/ML
+# ============================================
+torch>=2.1.0,<2.4.0
+torchvision>=0.16.0,<0.19.0
+
+# ============================================
+# Diffusers Ecosystem (CRITICAL: Version Lock)
+# ============================================
+diffusers==0.27.2
+transformers==4.40.2
+accelerate==0.29.3
+safetensors==0.4.3
+
+# ============================================
+# IP-Adapter for Character Consistency
+# ============================================
+# Note: IP-Adapter uses diffusers internally, versions must match
+ip-adapter==1.0.0
+
+# ============================================
+# ControlNet Utilities
+# ============================================
+controlnet-aux==0.0.9
+
+# ============================================
+# InsightFace (for IP-Adapter FaceID)
+# On Kaggle, use install_kaggle_deps.sh for pre-compiled wheel
+# ============================================
+onnxruntime-gpu==1.17.1
+# insightface installed separately via script
+
+# ============================================
+# LLM - Google Gemini
+# ============================================
+google-generativeai>=0.5.0
+
+# ============================================
+# Data Validation
+# ============================================
+pydantic>=2.0.0,<3.0.0
+
+# ============================================
+# Image Processing
+# ============================================
+opencv-python>=4.8.0,<5.0.0
+opencv-python-headless>=4.8.0,<5.0.0  # For servers without display
+Pillow>=10.0.0,<11.0.0
+mediapipe>=0.10.0
+
+# ============================================
+# PDF Generation
+# ============================================
+reportlab>=4.0.0,<5.0.0
+
+# ============================================
+# Utilities
+# ============================================
+python-dotenv>=1.0.0
+requests>=2.28.0
+tqdm>=4.65.0
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+
+# ============================================
+# HuggingFace Hub (for model downloads)
+# ============================================
+huggingface-hub>=0.21.0
