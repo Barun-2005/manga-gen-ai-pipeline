@@ -418,6 +418,36 @@ def create_output_zip(output_dir: Path, zip_name: str = "manga_output.zip") -> P
     size_mb = zip_path.stat().st_size / 1024 / 1024
     print(f"✅ Created zip: {zip_path} ({size_mb:.2f} MB)")
     
+    # ============================================
+    # AUTO-COPY TO /kaggle/working/ FOR KAGGLE
+    # ============================================
+    kaggle_working = Path("/kaggle/working")
+    if kaggle_working.exists():
+        print("\n🔄 Copying to Kaggle output folder...")
+        try:
+            # Copy zip
+            kaggle_zip = kaggle_working / zip_name
+            shutil.copy(zip_path, kaggle_zip)
+            print(f"   ✅ Copied: {kaggle_zip}")
+            
+            # Also copy PDF for easy access
+            pdf_path = output_dir / "manga_page.pdf"
+            if pdf_path.exists():
+                shutil.copy(pdf_path, kaggle_working / "manga_page.pdf")
+                print(f"   ✅ Copied: /kaggle/working/manga_page.pdf")
+            
+            # Copy PNG page too
+            page_path = output_dir / "manga_page.png"
+            if page_path.exists():
+                shutil.copy(page_path, kaggle_working / "manga_page.png")
+                print(f"   ✅ Copied: /kaggle/working/manga_page.png")
+                
+            print("\n📥 Files are now in Kaggle Output panel!")
+            print("   Refresh the Output panel to see them.")
+            
+        except Exception as e:
+            print(f"   ⚠️ Could not copy to /kaggle/working: {e}")
+    
     return zip_path
 
 
