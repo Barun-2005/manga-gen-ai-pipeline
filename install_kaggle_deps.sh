@@ -28,24 +28,37 @@ echo "🔥 Step 2/5: Verifying PyTorch..."
 python -c "import torch; print(f'PyTorch {torch.__version__} - CUDA: {torch.cuda.is_available()}')"
 
 # ============================================
-# Step 3: Install core requirements (without insightface)
+# Step 3: Install core requirements
 # ============================================
 echo "📚 Step 3/5: Installing core requirements..."
-pip install --quiet \
+
+# CRITICAL: Downgrade numpy first to avoid compatibility issues
+echo "   📌 Fixing numpy version..."
+pip install --quiet "numpy<2.0.0"
+
+# Install diffusers ecosystem FIRST (order matters!)
+echo "   📌 Installing diffusers ecosystem..."
+pip install --quiet --upgrade \
     diffusers==0.27.2 \
     transformers==4.40.2 \
     accelerate==0.29.3 \
-    safetensors==0.4.3 \
+    safetensors==0.4.3
+
+# Install other dependencies
+echo "   📌 Installing other dependencies..."
+pip install --quiet \
     controlnet-aux==0.0.9 \
     google-generativeai>=0.5.0 \
-    pydantic>=2.0.0 \
+    "pydantic>=2.0.0,<2.12" \
     opencv-python-headless>=4.8.0 \
     Pillow>=10.0.0 \
-    mediapipe>=0.10.0 \
     reportlab>=4.0.0 \
     python-dotenv>=1.0.0 \
     huggingface-hub>=0.21.0 \
     tqdm>=4.65.0
+
+# Skip mediapipe as it causes numpy conflicts
+echo "   ⏭️ Skipping mediapipe (optional, causes numpy conflicts)"
 
 # ============================================
 # Step 4: Install ONNX Runtime GPU (required for insightface)
