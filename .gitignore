@@ -132,3 +132,18 @@ panels/
 config.json
 secrets.json
 api_keys.txt
+
+# Model artifacts (large binary files)
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.bin
+*.onnx
+artifacts/
+ComfyUI-master/models/
+archive/models/*
+!archive/models/README.md
+
+# HuggingFace cache
+.cache/huggingface/

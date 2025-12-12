@@ -1,0 +1,18 @@
+[
+  {
+    "output_path": "pipeline_v2/output/batch_test_01.png",
+    "scene_type": "basic",
+    "emotion": "happy",
+    "pose": "standing",
+    "style": "bw",
+    "seed": 100
+  },
+  {
+    "output_path": "pipeline_v2/output/batch_test_02.png",
+    "scene_type": "basic",
+    "emotion": "angry",
+    "pose": "sitting",
+    "style": "color",
+    "seed": 200
+  }
+]

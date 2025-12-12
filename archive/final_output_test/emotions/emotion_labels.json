@@ -1,0 +1,72 @@
+{
+  "extraction_timestamp": "2025-06-02T20:37:41.007132",
+  "source": "validation_sample_dialogue",
+  "total_lines": 6,
+  "dialogue_emotions": [
+    {
+      "line": "I must find the ancient temple hidden in these mountains!",
+      "emotion": "determined",
+      "confidence": 1.0,
+      "keywords_found": [
+        "must"
+      ],
+      "method": "keyword_sentiment",
+      "line_index": 0
+    },
+    {
+      "line": "What is this mysterious glowing crystal sword?",
+      "emotion": "sad",
+      "confidence": 0.8,
+      "keywords_found": [
+        "cry"
+      ],
+      "method": "keyword_sentiment",
+      "line_index": 1
+    },
+    {
+      "line": "The ancient guardians are awakening to protect the sacred weapon...",
+      "emotion": "sad",
+      "confidence": 0.7,
+      "keywords_found": [],
+      "method": "keyword_sentiment",
+      "line_index": 2
+    },
+    {
+      "line": "I will prove my worth through these combat trials!",
+      "emotion": "determined",
+      "confidence": 1.0,
+      "keywords_found": [
+        "will"
+      ],
+      "method": "keyword_sentiment",
+      "line_index": 3
+    },
+    {
+      "line": "The power of the crystal sword flows through me now.",
+      "emotion": "neutral",
+      "confidence": 1.0,
+      "keywords_found": [
+        "no",
+        "now"
+      ],
+      "method": "keyword_sentiment",
+      "line_index": 4
+    },
+    {
+      "line": "Enemies are attacking the temple! We must fight to protect it!",
+      "emotion": "determined",
+      "confidence": 1.0,
+      "keywords_found": [
+        "must",
+        "fight"
+      ],
+      "method": "keyword_sentiment",
+      "line_index": 5
+    }
+  ],
+  "emotion_distribution": {
+    "determined": 3,
+    "sad": 2,
+    "neutral": 1
+  }
+}

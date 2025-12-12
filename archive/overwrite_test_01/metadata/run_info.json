@@ -1,0 +1,23 @@
+{
+  "run_name": "overwrite_test_01",
+  "created_at": "2025-06-02T20:35:00.087832",
+  "structure": {
+    "panels": {
+      "base": "Base panels (standard prompts)",
+      "enhanced": "Enhanced panels (layout-enhanced prompts)"
+    },
+    "validation": {
+      "logs": "Validation execution logs",
+      "scores": "Coherence and quality scores",
+      "reports": "Human-readable validation reports"
+    },
+    "emotions": "Emotion extraction results",
+    "metadata": "Run metadata and prompt mappings"
+  },
+  "panel_mappings": {
+    "base": {},
+    "enhanced": {}
+  },
+  "validation_results": {},
+  "emotion_results": {}
+}

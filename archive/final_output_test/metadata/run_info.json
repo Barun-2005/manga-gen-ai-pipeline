@@ -1,0 +1,98 @@
+{
+  "run_name": "final_output_test",
+  "created_at": "2025-06-02T20:35:35.239461",
+  "structure": {
+    "panels": {
+      "base": "Base panels (standard prompts)",
+      "enhanced": "Enhanced panels (layout-enhanced prompts)"
+    },
+    "validation": {
+      "logs": "Validation execution logs",
+      "scores": "Coherence and quality scores",
+      "reports": "Human-readable validation reports"
+    },
+    "emotions": "Emotion extraction results",
+    "metadata": "Run metadata and prompt mappings"
+  },
+  "panel_mappings": {
+    "base": {
+      "1": {
+        "filename": "panel_001_A_young_ninja_discovers_an_ancient_temple_hidden_i.png",
+        "prompt_summary": "A young ninja discovers an ancient temple hidden i",
+        "created_at": "2025-06-02T20:35:35.253914"
+      },
+      "2": {
+        "filename": "panel_002_the_ninja_finds_a_mysterious_glowing_crystal_sword.png",
+        "prompt_summary": "the ninja finds a mysterious glowing crystal sword",
+        "created_at": "2025-06-02T20:35:45.406982"
+      },
+      "3": {
+        "filename": "panel_003_Ancient_guardians_awaken_to_protect_the_sacred_wea.png",
+        "prompt_summary": "Ancient guardians awaken to protect the sacred wea",
+        "created_at": "2025-06-02T20:35:55.538586"
+      },
+      "4": {
+        "filename": "panel_004_The_ninja_must_prove_their_worth_through_combat_tr.png",
+        "prompt_summary": "The ninja must prove their worth through combat tr",
+        "created_at": "2025-06-02T20:36:05.681018"
+      },
+      "5": {
+        "filename": "panel_005_The_ninja_claims_the_crystal_sword_and_gains_its_p.png",
+        "prompt_summary": "The ninja claims the crystal sword and gains its p",
+        "created_at": "2025-06-02T20:36:15.799340"
+      },
+      "6": {
+        "filename": "panel_006_seeking_to_steal_the_weapon.png",
+        "prompt_summary": "seeking to steal the weapon",
+        "created_at": "2025-06-02T20:36:27.927591"
+      }
+    },
+    "enhanced": {
+      "1": {
+        "filename": "panel_001_A_young_ninja_discovers_an_ancient_temple_hidden_i.png",
+        "prompt_summary": "A young ninja discovers an ancient temple hidden i",
+        "created_at": "2025-06-02T20:36:40.118651"
+      },
+      "2": {
+        "filename": "panel_002_the_ninja_finds_a_mysterious_glowing_crystal_sword.png",
+        "prompt_summary": "the ninja finds a mysterious glowing crystal sword",
+        "created_at": "2025-06-02T20:36:50.260101"
+      },
+      "3": {
+        "filename": "panel_003_Ancient_guardians_awaken_to_protect_the_sacred_wea.png",
+        "prompt_summary": "Ancient guardians awaken to protect the sacred wea",
+        "created_at": "2025-06-02T20:37:00.396318"
+      },
+      "4": {
+        "filename": "panel_004_The_ninja_must_prove_their_worth_through_combat_tr.png",
+        "prompt_summary": "The ninja must prove their worth through combat tr",
+        "created_at": "2025-06-02T20:37:10.554813"
+      },
+      "5": {
+        "filename": "panel_005_The_ninja_claims_the_crystal_sword_and_gains_its_p.png",
+        "prompt_summary": "The ninja claims the crystal sword and gains its p",
+        "created_at": "2025-06-02T20:37:20.688042"
+      },
+      "6": {
+        "filename": "panel_006_seeking_to_steal_the_weapon__LAYOUT_MEMORY_BACKG.png",
+        "prompt_summary": "seeking to steal the weapon | LAYOUT_MEMORY: BACKG",
+        "created_at": "2025-06-02T20:37:30.858151"
+      }
+    }
+  },
+  "validation_results": {
+    "scores": {
+      "file": "validation\\scores\\validation_scores_20250602_203741.json",
+      "saved_at": "2025-06-02T20:37:41.009132"
+    },
+    "reports": {
+      "file": "validation\\reports\\validation_report_20250602_203741.md",
+      "saved_at": "2025-06-02T20:37:41.010532"
+    }
+  },
+  "emotion_results": {
+    "file": "emotions\\emotion_labels.json",
+    "saved_at": "2025-06-02T20:37:41.007132",
+    "total_lines": 6
+  }
+}
