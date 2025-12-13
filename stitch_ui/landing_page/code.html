@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MangaGen AI - Create Professional Manga with AI</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#38e07b",
+                        "primary-hover": "#2bc968",
+                        "accent-purple": "#7c3aed",
+                        "accent-pink": "#ec4899",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#122017",
+                        "surface-dark": "#1a2c22",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem", 
+                        "lg": "1.5rem", 
+                        "xl": "2rem", 
+                        "2xl": "3rem", 
+                        "full": "9999px"
+                    },
+                    backgroundImage: {
+                        'gradient-hero': 'linear-gradient(135deg, rgba(18,32,23,0.95) 0%, rgba(26,44,34,0.95) 100%)',
+                        'gradient-glow': 'radial-gradient(circle at center, rgba(56, 224, 123, 0.15) 0%, transparent 70%)',
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #122017;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #264532;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #38e07b;
+        }
+        
+        .text-shadow-glow {
+            text-shadow: 0 0 20px rgba(56, 224, 123, 0.3);
+        }
+        
+        .glass-card {
+            background: rgba(26, 44, 34, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 224, 123, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-x-hidden selection:bg-primary selection:text-background-dark">
+<!-- Navbar -->
+<header class="fixed top-0 left-0 right-0 z-50 transition-all duration-300">
+<div class="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto mt-4">
+<div class="bg-surface-dark/80 backdrop-blur-md border border-[#264532] rounded-full px-6 py-3 flex items-center justify-between shadow-lg shadow-primary/5">
+<div class="flex items-center gap-3">
+<div class="size-8 text-primary flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-size: 32px;">auto_stories</span>
+</div>
+<h1 class="text-white text-xl font-bold tracking-tight">MangaGen<span class="text-primary">.AI</span></h1>
+</div>
+<nav class="hidden md:flex items-center gap-8">
+<a class="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#features">How it Works</a>
+<a class="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#gallery">Gallery</a>
+<a class="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#pricing">Pricing</a>
+</nav>
+<div class="flex items-center gap-3">
+<button class="hidden sm:flex text-white hover:text-primary px-3 text-sm font-bold transition-colors">
+                        Log In
+                    </button>
+<button class="flex items-center justify-center rounded-full h-10 px-5 bg-primary hover:bg-primary-hover text-background-dark text-sm font-bold transition-all shadow-[0_0_15px_rgba(56,224,123,0.3)] hover:shadow-[0_0_25px_rgba(56,224,123,0.5)]">
+                        Sign Up
+                    </button>
+</div>
+</div>
+</div>
+</header>
+<!-- Hero Section -->
+<section class="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+<!-- Background Elements -->
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-gradient-glow pointer-events-none opacity-50"></div>
+<div class="absolute top-20 right-0 w-[500px] h-[500px] bg-accent-purple/10 rounded-full blur-[100px] pointer-events-none"></div>
+<div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+<div class="grid lg:grid-cols-2 gap-12 items-center">
+<!-- Left Content -->
+<div class="flex flex-col gap-6 max-w-2xl text-center lg:text-left mx-auto lg:mx-0">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#264532]/50 border border-primary/20 w-fit mx-auto lg:mx-0">
+<span class="flex h-2 w-2 rounded-full bg-primary animate-pulse"></span>
+<span class="text-xs font-medium text-primary uppercase tracking-wider">v2.0 Model Live Now</span>
+</div>
+<h1 class="text-5xl sm:text-6xl lg:text-7xl font-black leading-[1.1] tracking-tight text-white">
+                        TURN WORDS <br/>
+<span class="text-transparent bg-clip-text bg-gradient-to-r from-primary via-white to-primary bg-[length:200%_auto] animate-[gradient_3s_linear_infinite]">INTO WORLDS</span>
+</h1>
+<p class="text-gray-400 text-lg sm:text-xl leading-relaxed max-w-lg mx-auto lg:mx-0">
+                        The world's fastest AI manga generator. Create professional quality manga pages, character sheets, and storyboards from simple text prompts in seconds.
+                    </p>
+<div class="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mt-4">
+<button class="flex h-14 items-center justify-center rounded-full px-8 bg-primary hover:bg-primary-hover text-background-dark text-lg font-bold transition-all shadow-[0_0_20px_rgba(56,224,123,0.4)] hover:shadow-[0_0_30px_rgba(56,224,123,0.6)] group">
+<span class="mr-2 material-symbols-outlined filled group-hover:translate-x-1 transition-transform">draw</span>
+                            Create Your Manga
+                        </button>
+<button class="flex h-14 items-center justify-center rounded-full px-8 bg-[#264532]/30 hover:bg-[#264532]/50 border border-[#264532] text-white text-lg font-bold transition-all backdrop-blur-sm">
+                            View Gallery
+                        </button>
+</div>
+<div class="flex items-center justify-center lg:justify-start gap-4 mt-6 text-sm text-gray-500">
+<div class="flex -space-x-3">
+<img alt="User Avatar 1" class="w-8 h-8 rounded-full border-2 border-background-dark" data-alt="Portrait of a user" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAznCYqpD0Keo5KXAvWIqD-xMzdgVfXCnm71rDJ95YCuOKXCxXyonvG_QhOQHg64EVRguud65qX1XnikYgwcQa6LrE_jx4IZWOO4HUExo5Cdh8H5MAe9wxXYCQGORtxUj12nUGLSxCQVZ1jQqDyAzn8XEIBYWdYsjH0WPW5amXWbz7Z7p420OQu3GqAsSR45TL66mw02sSzL4U4Vjv87je2ZfY7Na0kJBes_NSPQ8q5Rs7gvI--emVCephVexlS9T73Ix7zQsKZ5MY"/>
+<img alt="User Avatar 2" class="w-8 h-8 rounded-full border-2 border-background-dark" data-alt="Portrait of a user" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmpEaiRKSw9lPGO1KRAQ2kvZYSmclhAsQCDg1-ZAuzKoHjYaXbOigtm4iAdz7FXIDsLOwF64jsjgrsqdg6kebS1voXPT5AbG5oMWRjLCtRoefeC-p_8x_1irIAJ9DSOXvTO8IdkyYwcwrTtyUeGotbq77jZa2WBSPeZTlGRTD3XxyKbcUKKUbW_bessEDhdaVQrCwEpZMoMOw5IkRWyG7lq00c3ziiXlaCOEAKrpIUXSXzTm4Jmqx04u1TY3eDogpBQR6u2vDr6KwD"/>
+<img alt="User Avatar 3" class="w-8 h-8 rounded-full border-2 border-background-dark" data-alt="Portrait of a user" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4y0wsduY5p4XSYgTM48zsorb5rshQe5XUEqGZm9ZDO1l7wHgaisi4RZstmEF3pIUL_NIhb8qhP4L6zfLy6Is0FOVGVikiHgtOxEkC5AzNjnDZueJxOAIEnDCq0ZSLUmIz4M_AWM77is9orKJXkYW0MjsRRYOzGBSAk09NI39CLTdwFpwIvsTVNYel-EeCiMjaUaQoqmCKlURv1XAS9jFh8wg5m-RvxVmVkpJEhBfderOLCKRqh_6x1h4XYxJs1dXcdhfG-PdiRawt"/>
+</div>
+<p>Trusted by 10,000+ creators</p>
+</div>
+</div>
+<!-- Right Visual -->
+<div class="relative w-full h-full min-h-[400px] lg:min-h-[600px] flex items-center justify-center">
+<div class="relative w-full aspect-[3/4] max-w-md mx-auto perspective-1000">
+<!-- Main Manga Page Card -->
+<div class="absolute inset-0 bg-[#1a2c22] rounded-xl overflow-hidden border border-[#264532] shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500 z-20 group">
+<div class="absolute top-4 left-4 right-4 z-10 flex justify-between items-center">
+<span class="bg-black/70 backdrop-blur text-white text-xs px-2 py-1 rounded">Page 01</span>
+<span class="material-symbols-outlined text-white drop-shadow-md">favorite</span>
+</div>
+<div class="h-full w-full bg-cover bg-center" data-alt="Detailed black and white manga panel featuring a cybernetic city skyline with dramatic shadows" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuC8uEglNHOYcSOe1fuZGoYmWf7243V_8nOaMhF5jC7MxIQ1sX81fPkv8nuEPOdAnVTVja0DfLhe882PhSc-1EKzVQYobW2Up3OAVXIJAzbT9HLFC3x1LdDa-ZTZhjDk7v3pnnQO7Kdrt8MNxfF4fdD1IgEFmr7keqklcjoKrx8XS4J1dFhcpx5JCtrKZ2eOrMNtpKS2uXwqqWS5ygoXa-ikTXMFUq8jDSv4EOwv_7ikifMSeEXePjprgeAWKp4dYGVoTfYr02AVySGy');"></div>
+<!-- Prompt Overlay -->
+<div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/80 to-transparent translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+<p class="text-primary text-xs font-bold mb-1">PROMPT</p>
+<p class="text-white text-sm">"Cyberpunk detective looking at a rainy neon city skyline, high contrast, manga style, detailed line art"</p>
+</div>
+</div>
+<!-- Secondary Cards for Depth -->
+<div class="absolute inset-0 bg-[#1a2c22] rounded-xl border border-[#264532] shadow-xl -rotate-2 scale-95 z-10 translate-x-4 translate-y-4 opacity-60" data-alt="Action sequence manga panel with speed lines and dynamic pose" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDZdZ79lGvB77ldkLGvpVYAiXhrA8f-no5W9vMXiM4oZDeIMA-P8BorO66MkxIfkXX6hR-eI_lTIHyrel_3PAh18IcGBbItg11clt_mSPN3lBD7UD2iBpoM9L5-PotuXOHTpXGv-Nj4LHNDnyUiFd-kC183W1KHsLps14mHTIIRXEDjIWoUcH-H67xoWfzWMo4Dm_5-BoySEXbas1wnGc9GQzcRgUZvaKtYkgEJiUf7MdFkeI1zfT74whfmK2EIhjVmK-Bqa182n8KC'); background-size: cover; background-position: center;"></div>
+<div class="absolute inset-0 bg-[#1a2c22] rounded-xl border border-[#264532] shadow-lg -rotate-6 scale-90 z-0 translate-x-8 translate-y-8 opacity-30" data-alt="Close up manga character face with intense expression" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAveqcpD7P7GDCHsjKajoMtKslTCsmyObc2wjUXmvfnM1oPaRtIwN618J2iW17nUWKX5Gv42TthF6I1yw9vMJyBRTEcDcmGEm0usnE_HIWqaZ4diV2RgBtzXTN5Zy5ZGyqeJ4Bj7uVtWe_FluFgccsJo2EqjySYoo2pDiCx31pk4mCVr6t6vpYl5lbKvqQWejypQJESdDALV6S0EW6uHNWCfUl1vrrO8cVI5J9R1Kt3ngNqrzIqVTQ3YhShctCN_E6xHXrNtjgphQrH'); background-size: cover; background-position: center;"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Logo Cloud -->
+<section class="border-y border-[#264532] bg-[#122017]/50 backdrop-blur-sm py-8">
+<div class="container mx-auto px-4">
+<p class="text-center text-gray-500 text-sm font-medium mb-6 uppercase tracking-widest">Powering Next-Gen Storytellers</p>
+<div class="flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+<!-- Placeholder SVG Logos -->
+<svg class="h-8 w-auto text-white" fill="currentColor" viewbox="0 0 100 30">
+<path d="M10,15 L20,5 L30,15 L20,25 Z M40,5 H90 V25 H40 Z"></path>
+</svg>
+<svg class="h-8 w-auto text-white" fill="currentColor" viewbox="0 0 100 30">
+<circle cx="15" cy="15" r="10"></circle>
+<rect height="10" width="55" x="35" y="10"></rect>
+</svg>
+<svg class="h-8 w-auto text-white" fill="currentColor" viewbox="0 0 100 30">
+<rect height="20" width="20" x="10" y="5"></rect>
+<rect height="20" width="50" x="40" y="5"></rect>
+</svg>
+<svg class="h-8 w-auto text-white" fill="currentColor" viewbox="0 0 100 30">
+<path d="M10,25 L20,5 L30,25 M15,15 H25" stroke="currentColor" stroke-width="3"></path>
+<rect height="10" width="50" x="40" y="10"></rect>
+</svg>
+</div>
+</div>
+</section>
+<!-- How It Works -->
+<section class="py-24 relative overflow-hidden" id="features">
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+<div class="text-center max-w-3xl mx-auto mb-16">
+<h2 class="text-primary font-bold tracking-wider uppercase mb-3 text-sm">Workflow</h2>
+<h3 class="text-3xl md:text-5xl font-black text-white mb-6">From Idea to Page in <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent-purple">3 Steps</span></h3>
+<p class="text-gray-400 text-lg">Our AI engine handles the complex drawing process, perspective, and shading so you can focus purely on the story.</p>
+</div>
+<div class="grid md:grid-cols-3 gap-6 lg:gap-8">
+<!-- Step 1 -->
+<div class="glass-card p-8 rounded-2xl relative group hover:-translate-y-2 transition-transform duration-300">
+<div class="absolute -top-6 left-8 bg-surface-dark border border-[#264532] p-3 rounded-xl shadow-lg group-hover:border-primary/50 transition-colors">
+<span class="material-symbols-outlined text-primary text-3xl">edit_note</span>
+</div>
+<div class="mt-8">
+<h4 class="text-xl font-bold text-white mb-3">1. Describe</h4>
+<p class="text-gray-400 leading-relaxed mb-6">Type your scene details. Specify characters, poses, camera angles, and atmosphere.</p>
+<div class="bg-[#0f1a14] p-4 rounded-lg border border-[#264532] text-sm text-gray-300 font-mono">
+<span class="text-primary">&gt;</span> /imagine prompt: hero standing on rooftop, rain, cyberpunk city background...
+                        </div>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="glass-card p-8 rounded-2xl relative group hover:-translate-y-2 transition-transform duration-300">
+<div class="absolute -top-6 left-8 bg-surface-dark border border-[#264532] p-3 rounded-xl shadow-lg group-hover:border-primary/50 transition-colors">
+<span class="material-symbols-outlined text-primary text-3xl">auto_fix_high</span>
+</div>
+<div class="mt-8">
+<h4 class="text-xl font-bold text-white mb-3">2. Generate</h4>
+<p class="text-gray-400 leading-relaxed mb-6">Our engine renders high-fidelity line art, screen tones, and speech bubbles instantly.</p>
+<div class="h-24 w-full bg-[#0f1a14] rounded-lg border border-[#264532] relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-[shimmer_2s_infinite]"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="text-primary text-xs font-bold uppercase tracking-widest animate-pulse">Processing...</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="glass-card p-8 rounded-2xl relative group hover:-translate-y-2 transition-transform duration-300">
+<div class="absolute -top-6 left-8 bg-surface-dark border border-[#264532] p-3 rounded-xl shadow-lg group-hover:border-primary/50 transition-colors">
+<span class="material-symbols-outlined text-primary text-3xl">download</span>
+</div>
+<div class="mt-8">
+<h4 class="text-xl font-bold text-white mb-3">3. Publish</h4>
+<p class="text-gray-400 leading-relaxed mb-6">Export your pages in 4K resolution, ready for digital publishing or print.</p>
+<button class="w-full py-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary font-bold text-sm transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg">file_download</span>
+                            Download .PNG
+                        </button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Gallery Section -->
+<section class="py-24 bg-[#0d1611]" id="gallery">
+<div class="container mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
+<div>
+<h2 class="text-3xl md:text-4xl font-black text-white mb-2">Made With MangaGen</h2>
+<p class="text-gray-400">Explore creations from our community.</p>
+</div>
+<button class="flex items-center gap-2 text-white hover:text-primary font-bold transition-colors">
+                    View Full Gallery <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+<!-- Masonry Grid Layout -->
+<div class="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+<!-- Gallery Item 1 -->
+<div class="break-inside-avoid relative group rounded-xl overflow-hidden cursor-pointer">
+<img alt="Detailed manga portrait of a warrior" class="w-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Black and white anime style illustration of a warrior character" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVF21gitDOtIIZPxOsv3gQDp0_RY1srFVsgGgQTc53Xgppq2REgg2h6agOFioh7-YBmZ0o7Agz6tI5NQyZ83C7LYNIS7Tn8n-VvYkL84W16X-doDoP1TRc0qELr_a61VkGJV7nb9cVfseusSuUdwpkXWu9BwMyKRGN8EI8ALXCaP4qA_tQejwa_0kqzmPky8_QcWhbojqI39xaSBLIfNNiB3tt6oO-hBLg0h78QXt4dRghoc-VKYvBI2svFieaDC50S3p-XpyAE-IO"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+<span class="text-primary text-xs font-bold uppercase mb-1">Character Design</span>
+<p class="text-white text-sm line-clamp-2">"Samurai warrior, heavy ink lines, gritty texture, looking at sunset"</p>
+</div>
+</div>
+<!-- Gallery Item 2 -->
+<div class="break-inside-avoid relative group rounded-xl overflow-hidden cursor-pointer">
+<img alt="Cyberpunk city street scene" class="w-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Intricate background art of a futuristic japanese street at night in manga style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2qy2LH3CkXYs5TBIxMvypOD56x6ROuIT68ANzfumRE06Y3986scxl0F5mMouLCPZ68cXvNdOpDhMf3s1Z2Q-rSi3Obbk-iQTjaZR_KWKbmVtu1Xv9PpjO5AtSqnzDXG5vUS5Q-SY_vy5ugWd2RyaasXeWBapVL6htVfWha8OSFv85icY_-3kY5uk5Kq9HO5aHK-_ybKdtGtrW8bUC6HUrTYi-O_rFxKcxy5aXJhuFrHIayNnGsww1lo9UzsJ-yweTMoDZJmuyx59e"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+<span class="text-primary text-xs font-bold uppercase mb-1">Background</span>
+<p class="text-white text-sm line-clamp-2">"Neo-Tokyo street level, night, rain reflections, highly detailed"</p>
+</div>
+</div>
+<!-- Gallery Item 3 -->
+<div class="break-inside-avoid relative group rounded-xl overflow-hidden cursor-pointer">
+<img alt="Manga panel layout example" class="w-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Comic book layout with multiple panels showing a fight sequence" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6wUZa3up6gJxotjKKe73T0jbt0BGmCK7uaJB-0o90RPEDJDohXQY-anZ5rKou_nMn-RPkXxYlmpu2qWmVtOsangxTDQZB88xcJ-qZ6j5SY2qKRF_TKl1uEcFVYAPacdIha8F7gtVLwrE12mJIFhq_v2qyYGSOxZHFWD4lOGL67z5s9OGf8Ei-2CqJvBNiLjo6dRphn2OM0DJKg9sxrFLx7-UC0l5L-YK8F0TB5wvETiXRIv-sliIyLUqe2DYt3ifJBM6GDq34TM4S"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+<span class="text-primary text-xs font-bold uppercase mb-1">Full Page</span>
+<p class="text-white text-sm line-clamp-2">"Action sequence, dynamic panels, speed lines, shonen style"</p>
+</div>
+</div>
+<!-- Gallery Item 4 -->
+<div class="break-inside-avoid relative group rounded-xl overflow-hidden cursor-pointer">
+<img alt="Close up eye detail manga" class="w-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Close up of an anime eye with detailed reflections" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBrEqDBA03-ojkOwzbKOHzNByc1hIWPFRP1gZq1JIT8pGkWVw4PYGYdFO2kFLHLNVRoh_w3CLLoQBgkT7LhvDGZrCyNShNFcKmSIwVlnSFQR_zBKlT2Yocmt2vEHdCxqATaYdHkURUjgV6Jmu5ooABe0DaPWkbPQwJ7i47jiKOZ9mdrh_oiegJ9jvKDSPJ-4NsQb6wVbamBgWPtrw6xkcNa6ynHr6m04PenfdI8YQ0ZQL-Cddt98p7lWkQ6boO0DBHzObA8x07h-WB5"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+<span class="text-primary text-xs font-bold uppercase mb-1">Detail Shot</span>
+<p class="text-white text-sm line-clamp-2">"Extreme close up eye, emotion, tears, detailed shading"</p>
+</div>
+</div>
+<!-- Gallery Item 5 -->
+<div class="break-inside-avoid relative group rounded-xl overflow-hidden cursor-pointer">
+<img alt="Mecha robot design" class="w-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Sketch of a giant robot mecha in a hangar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBxk_aXA-iJv_HgJtJL1JBjmjMIQODn1c8HE6X5S_ilH7vmKgMIOcJOioeEZGRSfEY7gF1cRV0LIlOEc-ad4lSyUdMCf2Zmhknf_CRapXjkYqRt6568O87Pws7kw6PGvk_psi2gERU0InlOfNonYfdsI99oLqsuD0uxC4rrJsnQQw215jIu8ohHGnX-TPPsxEEqmlBfIRJjwRj_ekxsg4Fjl9jO4x8yWWOiTGjnpXUfaTpSdgSpg9cI8cH0-to4SsnBr0rqvFKKoOo"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+<span class="text-primary text-xs font-bold uppercase mb-1">Mecha</span>
+<p class="text-white text-sm line-clamp-2">"Giant robot maintenance bay, scale, technical drawing style"</p>
+</div>
+</div>
+<!-- Gallery Item 6 -->
+<div class="break-inside-avoid relative group rounded-xl overflow-hidden cursor-pointer">
+<img alt="Fantasy landscape manga" class="w-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Fantasy world landscape with floating islands and clouds" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBC20Q5Z-myf5XGJzskI0h4BcJMfoFPibOclOkzB382ZNAqXRn-YzqAwDHQv_7tg1N0f-xxjBbBpdrO9GykrN-h86CQAmk9WNvgS-Lig_-V0v14MqttiMaZ0yAkmrMoRh9zh3bN8CIGk0tCBuhKlr9uXWHFn28SvTOO6cCR6gVEVHCn89IbrCic3Jcf57-0DtEHEgoTLSxY1eM8dIs71pp59oci5SBx7K5qcbPCqwBE2rFvxrRSQCS4_EkX3HKlVWAknt6hMAoAqRbA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
+<span class="text-primary text-xs font-bold uppercase mb-1">Fantasy</span>
+<p class="text-white text-sm line-clamp-2">"Floating islands, fantasy kingdom, clouds, aerial view"</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTA Section -->
+<section class="py-24 relative overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-b from-[#122017] to-[#0f1a14] z-0"></div>
+<div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 z-0"></div>
+<div class="container mx-auto px-4 relative z-10 text-center">
+<div class="max-w-4xl mx-auto bg-gradient-to-r from-surface-dark to-[#1f3529] border border-[#264532] p-8 md:p-12 rounded-3xl relative overflow-hidden">
+<!-- Decorative blurred orbs -->
+<div class="absolute -top-24 -right-24 w-64 h-64 bg-primary/20 rounded-full blur-[80px]"></div>
+<div class="absolute -bottom-24 -left-24 w-64 h-64 bg-accent-purple/20 rounded-full blur-[80px]"></div>
+<h2 class="text-3xl md:text-5xl font-black text-white mb-6">Ready to Start Your Serialization?</h2>
+<p class="text-gray-300 text-lg mb-8 max-w-xl mx-auto">Join thousands of artists and writers creating the next generation of manga with AI.</p>
+<div class="flex flex-col sm:flex-row gap-4 justify-center">
+<button class="flex h-12 items-center justify-center rounded-full px-8 bg-primary hover:bg-primary-hover text-background-dark text-lg font-bold transition-all shadow-lg hover:shadow-primary/40">
+                        Get Started for Free
+                    </button>
+<button class="flex h-12 items-center justify-center rounded-full px-8 bg-transparent hover:bg-white/5 border border-white/20 text-white text-lg font-bold transition-all">
+                        View Pricing Plans
+                    </button>
+</div>
+<p class="mt-6 text-xs text-gray-500">No credit card required for free tier.</p>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="bg-[#0a120d] border-t border-[#264532] pt-16 pb-8">
+<div class="container mx-auto px-4 sm:px-6 lg:px-8">
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-12">
+<div class="col-span-2 lg:col-span-2">
+<div class="flex items-center gap-3 mb-4">
+<div class="size-6 text-primary">
+<span class="material-symbols-outlined">auto_stories</span>
+</div>
+<h2 class="text-white text-lg font-bold">MangaGen AI</h2>
+</div>
+<p class="text-gray-500 text-sm leading-relaxed max-w-xs mb-6">
+                        Empowering storytellers with state-of-the-art AI generation tools. Create, edit, and publish your manga faster than ever.
+                    </p>
+<div class="flex gap-4">
+<a class="text-gray-400 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined">public</span></a>
+<a class="text-gray-400 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined">alternate_email</span></a>
+</div>
+</div>
+<div>
+<h3 class="text-white font-bold mb-4">Product</h3>
+<ul class="space-y-2">
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Features</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Pricing</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Gallery</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">API</a></li>
+</ul>
+</div>
+<div>
+<h3 class="text-white font-bold mb-4">Resources</h3>
+<ul class="space-y-2">
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Community</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Help Center</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Blog</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Status</a></li>
+</ul>
+</div>
+<div>
+<h3 class="text-white font-bold mb-4">Legal</h3>
+<ul class="space-y-2">
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Privacy</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Terms</a></li>
+<li><a class="text-gray-500 hover:text-primary text-sm transition-colors" href="#">Copyright</a></li>
+</ul>
+</div>
+</div>
+<div class="border-t border-[#264532] pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+<p class="text-gray-600 text-sm">© 2023 MangaGen AI Inc. All rights reserved.</p>
+<div class="flex gap-6">
+<p class="text-gray-600 text-sm flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+                        System Operational
+                    </p>
+</div>
+</div>
+</div>
+</footer>
+</body></html>
