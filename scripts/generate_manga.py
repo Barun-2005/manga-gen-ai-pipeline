@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-MangaGen - Multi-Page Manga Generator
+MangaGen - Multi-Page Manga Generator (Intelligent Version)
 
-Generates complete manga chapters with:
-- Multiple pages
-- Consistent characters
-- Color or B/W styles
-- Chapter structure
+Uses Story Director AI for:
+- Proper story pacing based on page count
+- Character expansion (adds supporting cast)
+- Meaningful dialogue that tells the story
+- Chapter continuation (doesn't rush endings)
 """
 
 import json
 import os
 import time
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any, Callable
 from dataclasses import dataclass, field
 
 
@@ -25,6 +25,7 @@ class MangaConfig:
     layout: str = "2x2"  # "2x2" (4 panels), "2x3" (6 panels)
     pages: int = 1
     output_dir: str = "outputs"
+    is_complete_story: bool = False  # If True, wrap up story. If False, leave for continuation.
     
     @property
     def panels_per_page(self) -> int:
@@ -37,117 +38,202 @@ class MangaConfig:
         return 4
 
 
-@dataclass
-class Character:
-    """A character in the manga."""
-    name: str
-    appearance: str
-    personality: str = ""
-
-
-@dataclass
-class Panel:
-    """A single manga panel."""
-    number: int
-    description: str
-    shot_type: str = "medium"
-    characters_present: List[str] = field(default_factory=list)
-    dialogue: List[Dict] = field(default_factory=list)
-
-
-@dataclass
-class MangaPage:
-    """A page of manga panels."""
-    page_number: int
-    panels: List[Panel] = field(default_factory=list)
-
-
-@dataclass
-class MangaChapter:
-    """A complete manga chapter."""
-    title: str
-    chapter_number: int = 1
-    characters: List[Character] = field(default_factory=list)
-    pages: List[MangaPage] = field(default_factory=list)
-    style: str = "color_anime"
-
-
 class MangaGenerator:
     """
-    Complete manga generation pipeline.
+    Complete manga generation pipeline with intelligent story planning.
     
-    Supports:
-    - Multi-page chapters
-    - Color and B/W styles
-    - Multiple characters
-    - Smart dialogue placement
+    Uses:
+    - Gemini AI for story planning (Story Director)
+    - Pollinations.ai for image generation
+    - Smart bubble placement for dialogue
     """
     
     def __init__(self, config: MangaConfig):
         self.config = config
         self.output_dir = Path(config.output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(exist_ok=True, parents=True)
         
         # Import generation modules
-        from scripts.generate_scene_groq import generate_scene_with_groq
         from scripts.generate_panels_api import PollinationsGenerator
         from src.dialogue.smart_bubbles import SmartBubblePlacer
         
-        self.scene_generator = generate_scene_with_groq
         self.image_generator = PollinationsGenerator(str(self.output_dir))
         self.bubble_placer = SmartBubblePlacer()
+        
+        # Story Director (Gemini) - will be initialized when needed
+        self._story_director = None
     
-    def generate_chapter_scenes(
+    @property
+    def story_director(self):
+        """Lazy load Story Director to avoid import issues."""
+        if self._story_director is None:
+            from src.ai.story_director import StoryDirector
+            gemini_key = os.environ.get("GEMINI_API_KEY")
+            if gemini_key:
+                self._story_director = StoryDirector(gemini_key)
+            else:
+                print("⚠️ GEMINI_API_KEY not set, using fallback Groq")
+                self._story_director = None
+        return self._story_director
+    
+    def generate_chapter(
         self,
         story_prompt: str,
-        groq_api_key: str
-    ) -> List[Dict]:
-        """Generate scene plans for all pages in the chapter."""
+        groq_api_key: str,
+        characters: Optional[List[Dict]] = None,
+        progress_callback: Optional[Callable[[str, int, Optional[Dict]], None]] = None
+    ) -> Dict:
+        """
+        Generate a complete manga chapter with intelligent story planning.
         
-        scenes = []
-        total_panels = self.config.pages * self.config.panels_per_page
+        Args:
+            story_prompt: The story concept
+            groq_api_key: Groq API key (fallback if no Gemini)
+            characters: Optional list of user-defined characters
         
-        print(f"\n📖 Generating {self.config.pages} page(s), {total_panels} panels total")
+        Returns:
+            Chapter result with all pages and PDF
+        """
         
-        # For multi-page, we expand the story across pages
-        for page_num in range(1, self.config.pages + 1):
-            print(f"\n📄 Page {page_num}/{self.config.pages}")
-            
-            # Adjust prompt for page context
-            if self.config.pages > 1:
-                page_prompt = f"{story_prompt}\n\n[This is page {page_num} of {self.config.pages}. "
-                if page_num == 1:
-                    page_prompt += "Start the story, introduce characters.]"
-                elif page_num == self.config.pages:
-                    page_prompt += "Conclude the story with a satisfying ending.]"
-                else:
-                    page_prompt += "Continue the action, build tension.]"
-            else:
-                page_prompt = story_prompt
-            
-            scene = self.scene_generator(
-                story_prompt=page_prompt,
+        print("=" * 60)
+        print(f"📚 MangaGen - Intelligent Chapter Generation")
+        print("=" * 60)
+        print(f"   Title: {self.config.title}")
+        print(f"   Style: {self.config.style}")
+        print(f"   Pages: {self.config.pages}")
+        print(f"   Layout: {self.config.layout}")
+        print(f"   Complete Story: {self.config.is_complete_story}")
+        
+        start_time = time.time()
+        
+        # Step 1: Plan the chapter with Story Director (Gemini)
+        if self.story_director:
+            print("\n🧠 Using Gemini Story Director for intelligent planning...")
+            chapter_plan = self.story_director.plan_chapter(
+                story_prompt=story_prompt,
+                characters=characters or [],
+                chapter_title=self.config.title,
+                page_count=self.config.pages,
+                panels_per_page=self.config.panels_per_page,
                 style=self.config.style,
-                layout=self.config.layout,
-                api_key=groq_api_key
+                is_complete_story=self.config.is_complete_story
+            )
+        else:
+            # Fallback to Groq (simpler planning)
+            print("\n⚡ Using Groq for scene generation (set GEMINI_API_KEY for better results)...")
+            chapter_plan = self._generate_with_groq(story_prompt, groq_api_key)
+        
+        # Step 2: Generate panels and compose pages
+        chapter_pages = []
+        
+        for page_data in chapter_plan.get('pages', []):
+            page_num = page_data.get('page_number', len(chapter_pages) + 1)
+            
+            print(f"\n📄 Processing Page {page_num}/{self.config.pages}")
+            print(f"   Beat: {page_data.get('emotional_beat', 'unknown')}")
+            
+            # Report progress
+            if progress_callback:
+                # Progress calculation: 20% (planning done) + (80% * page_num / total_pages)
+                current_prog = 20 + int(70 * (page_num - 1) / self.config.pages)
+                progress_callback(f"Processing page {page_num}/{self.config.pages}...", current_prog, None)
+            
+            # Generate panel images
+            panel_paths = self._generate_page_panels(page_data, page_num, progress_callback)
+            
+            # Add dialogue
+            if progress_callback:
+                progress_callback(f"Adding dialogue to page {page_num}...", -1, {"event": "step_started", "step": "dialogue"})
+            
+            bubble_paths = self._add_dialogue(panel_paths, page_data, page_num)
+            
+            # Compose page
+            if progress_callback:
+                progress_callback(f"Composing page {page_num}...", -1, {"event": "step_started", "step": "composition"})
+            page_path = self._compose_page(
+                bubble_paths,
+                page_num,
+                self.config.title
             )
             
-            scene['page_number'] = page_num
-            scenes.append(scene)
+            if progress_callback:
+                # Page complete - Send path for live preview
+                current_prog = 20 + int(70 * page_num / self.config.pages)
+                data = {
+                    "event": "page_complete",
+                    "page_num": page_num,
+                    "image_path": str(page_path),
+                    "panels": [str(p) for p in panel_paths]
+                }
+                progress_callback(f"Finished page {page_num}...", current_prog, data)
+            
+            chapter_pages.append({
+                'page_number': page_num,
+                'summary': page_data.get('page_summary', ''),
+                'panels': panel_paths,
+                'page_image': page_path
+            })
         
-        return scenes
+        # Step 3: Create PDF
+        pdf_path = self._create_pdf(chapter_pages)
+        
+        elapsed = time.time() - start_time
+        
+        print("\n" + "=" * 60)
+        print(f"✅ Chapter Complete!")
+        print("=" * 60)
+        print(f"   Pages: {len(chapter_pages)}")
+        print(f"   Time: {elapsed/60:.1f} minutes")
+        print(f"   PDF: {pdf_path}")
+        
+        if chapter_plan.get('cliffhanger'):
+            print(f"\n🎬 Cliffhanger: {chapter_plan.get('cliffhanger')}")
+        
+        return {
+            'title': self.config.title,
+            'summary': chapter_plan.get('summary', ''),
+            'characters': chapter_plan.get('characters', []),
+            'pages': chapter_pages,
+            'pdf': pdf_path,
+            'elapsed_seconds': elapsed,
+            'next_chapter_hook': chapter_plan.get('next_chapter_hook', '')
+        }
     
-    def generate_page_panels(
-        self,
-        scene: Dict,
-        page_num: int
-    ) -> List[str]:
+    def _generate_with_groq(self, story_prompt: str, api_key: str) -> Dict:
+        """Fallback: Generate chapter plan with Groq (simpler approach)."""
+        from scripts.generate_scene_groq import generate_scene_with_groq
+        
+        pages = []
+        for page_num in range(1, self.config.pages + 1):
+            scene = generate_scene_with_groq(
+                story_prompt=story_prompt,
+                style=self.config.style,
+                layout=self.config.layout,
+                page_number=page_num,
+                total_pages=self.config.pages,
+                api_key=api_key
+            )
+            
+            # Convert to chapter plan format
+            pages.append({
+                'page_number': page_num,
+                'page_summary': scene.get('title', 'Untitled'),
+                'emotional_beat': 'action',
+                'panels': scene.get('panels', [])
+            })
+        
+        return {
+            'chapter_title': self.config.title,
+            'summary': story_prompt[:200],
+            'characters': pages[0].get('characters', []) if pages else [],
+            'pages': pages
+        }
+    
+    def _generate_page_panels(self, page_data: Dict, page_num: int, progress_callback: Optional[Callable] = None) -> List[str]:
         """Generate panel images for a single page."""
         
-        print(f"\n🎨 Generating panels for page {page_num}...")
-        
-        panels = scene.get('panels', [])
-        characters = {c['name']: c for c in scene.get('characters', [])}
+        panels = page_data.get('panels', [])
+        characters = {c.get('name', ''): c for c in page_data.get('characters', [])}
         
         generated_files = []
         
@@ -155,11 +241,11 @@ class MangaGenerator:
             panel_id = f"p{page_num:02d}_panel_{i:02d}"
             filename = f"{panel_id}.png"
             
-            # Build prompt
+            # Build detailed prompt
             description = panel.get('description', '')
             shot_type = panel.get('shot_type', 'medium')
             
-            # Add character details
+            # Add character details from the plan
             char_details = []
             for char_name in panel.get('characters_present', []):
                 if char_name in characters:
@@ -177,61 +263,79 @@ class MangaGenerator:
             result = self.image_generator.generate_image(
                 prompt=prompt,
                 filename=filename,
-                style=self.config.style
+                style=self.config.style,
+                seed=page_num * 100 + i
             )
             
             if result:
                 generated_files.append(result)
                 print(f"   ✅ {filename}")
+                
+                if progress_callback:
+                    data = {
+                        "event": "panel_complete",
+                        "panel_index": (page_num - 1) * 4 + (i - 1),
+                        "image_path": str(result)
+                    }
+                    progress_callback(f"Generated Panel {i} on Page {page_num}", -1, data)
+            else:
+                print(f"   ❌ Failed: {filename}")
             
             time.sleep(1)  # Rate limiting
         
         return generated_files
     
-    def add_dialogue_to_panels(
-        self,
-        panel_paths: List[str],
-        scene: Dict,
-        page_num: int
-    ) -> List[str]:
+    def _add_dialogue(self, panel_paths: List[str], page_data: Dict, page_num: int) -> List[str]:
         """Add dialogue bubbles to panels."""
         
         print(f"\n💬 Adding dialogue to page {page_num}...")
         
-        panels = scene.get('panels', [])
+        panels = page_data.get('panels', [])
         output_files = []
         
         for i, (panel_path, panel_data) in enumerate(zip(panel_paths, panels), 1):
             dialogues = panel_data.get('dialogue', [])
             
-            if dialogues:
+            if dialogues and os.path.exists(panel_path):
                 output_path = panel_path.replace('.png', '_bubbles.png')
-                self.bubble_placer.place_dialogue(
-                    panel_path,
-                    dialogues,
-                    output_path
-                )
-                output_files.append(output_path)
-                print(f"   ✅ Added {len(dialogues)} bubble(s) to panel {i}")
+                try:
+                    self.bubble_placer.place_dialogue(
+                        panel_path,
+                        dialogues,
+                        output_path
+                    )
+                    output_files.append(output_path)
+                    print(f"   ✅ Added {len(dialogues)} bubble(s) to panel {i}")
+                except Exception as e:
+                    print(f"   ⚠️ Bubble error: {e}")
+                    output_files.append(panel_path)
             else:
                 output_files.append(panel_path)
         
         return output_files
     
-    def compose_page(
-        self,
-        panel_paths: List[str],
-        page_num: int,
-        title: str
-    ) -> str:
+    def _compose_page(self, panel_paths: List[str], page_num: int, title: str) -> str:
         """Compose panels into a single manga page."""
         
         from PIL import Image, ImageDraw, ImageFont
         
         print(f"\n📐 Composing page {page_num}...")
         
+        # Filter out non-existent files
+        valid_panels = [p for p in panel_paths if os.path.exists(p)]
+        
+        if not valid_panels:
+            print("   ⚠️ No valid panels to compose")
+            # Create placeholder
+            page = Image.new("RGB", (1240, 1754), "white")
+            draw = ImageDraw.Draw(page)
+            draw.text((620, 877), f"Page {page_num} - Generation Failed", fill="gray", anchor="mm")
+            output_path = self.output_dir / f"manga_page_{page_num:02d}.png"
+            page.save(output_path)
+            return str(output_path)
+        
         # Load panels
-        panels = [Image.open(p) for p in panel_paths]
+        panels = [Image.open(p) for p in valid_panels]
         
         # Page settings
         if self.config.layout == "2x2":
@@ -282,72 +386,7 @@ class MangaGenerator:
         
         return str(output_path)
     
-    def generate_chapter(
-        self,
-        story_prompt: str,
-        groq_api_key: str
-    ) -> Dict:
-        """Generate a complete manga chapter."""
-        
-        print("=" * 60)
-        print(f"📚 MangaGen - Chapter Generation")
-        print("=" * 60)
-        print(f"   Title: {self.config.title}")
-        print(f"   Style: {self.config.style}")
-        print(f"   Pages: {self.config.pages}")
-        print(f"   Layout: {self.config.layout}")
-        
-        start_time = time.time()
-        
-        # Step 1: Generate scenes for all pages
-        scenes = self.generate_chapter_scenes(story_prompt, groq_api_key)
-        
-        # Step 2: Generate panels and compose pages
-        chapter_pages = []
-        
-        for scene in scenes:
-            page_num = scene['page_number']
-            
-            # Generate panel images
-            panel_paths = self.generate_page_panels(scene, page_num)
-            
-            # Add dialogue
-            bubble_paths = self.add_dialogue_to_panels(panel_paths, scene, page_num)
-            
-            # Compose page
-            page_path = self.compose_page(
-                bubble_paths,
-                page_num,
-                self.config.title
-            )
-            
-            chapter_pages.append({
-                'page_number': page_num,
-                'scene': scene,
-                'panels': panel_paths,
-                'page_image': page_path
-            })
-        
-        # Step 3: Create PDF with all pages
-        pdf_path = self.create_chapter_pdf(chapter_pages)
-        
-        elapsed = time.time() - start_time
-        
-        print("\n" + "=" * 60)
-        print(f"✅ Chapter Complete!")
-        print("=" * 60)
-        print(f"   Pages: {len(chapter_pages)}")
-        print(f"   Time: {elapsed/60:.1f} minutes")
-        print(f"   PDF: {pdf_path}")
-        
-        return {
-            'title': self.config.title,
-            'pages': chapter_pages,
-            'pdf': pdf_path,
-            'elapsed_seconds': elapsed
-        }
-    
-    def create_chapter_pdf(self, chapter_pages: List[Dict]) -> str:
+    def _create_pdf(self, chapter_pages: List[Dict]) -> str:
         """Combine all pages into a single PDF."""
         
         from PIL import Image
@@ -356,10 +395,11 @@ class MangaGenerator:
         
         page_images = []
         for page_data in sorted(chapter_pages, key=lambda x: x['page_number']):
-            img = Image.open(page_data['page_image'])
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            page_images.append(img)
+            if os.path.exists(page_data['page_image']):
+                img = Image.open(page_data['page_image'])
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                page_images.append(img)
         
         pdf_path = self.output_dir / f"{self.config.title.replace(' ', '_')}_chapter.pdf"
         
@@ -387,6 +427,7 @@ def main():
     parser.add_argument("--style", default="color_anime", choices=["color_anime", "bw_manga"])
     parser.add_argument("--layout", default="2x2", choices=["2x2", "2x3", "3x3"])
     parser.add_argument("--output", default="outputs")
+    parser.add_argument("--complete", action="store_true", help="Complete story in this chapter")
     
     args = parser.parse_args()
     
@@ -395,7 +436,8 @@ def main():
         style=args.style,
         layout=args.layout,
         pages=args.pages,
-        output_dir=args.output
+        output_dir=args.output,
+        is_complete_story=args.complete
     )
     
     generator = MangaGenerator(config)
@@ -409,6 +451,8 @@ def main():
     
     print(f"\n🎉 Your manga is ready!")
     print(f"   PDF: {result['pdf']}")
+    if result.get('next_chapter_hook'):
+        print(f"   Next: {result['next_chapter_hook']}")
     
     return 0
 

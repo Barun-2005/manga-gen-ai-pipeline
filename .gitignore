@@ -1,154 +1,37 @@
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environment
+*.pyc
 venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-.venv/
+.pytest_cache/
 
-# Environment Variables
+# Node
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+
+# Environment
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+*.env
+
+# Outputs
+outputs/
+*.pdf
+*.png
+*.jpg
+temp/
+logs/
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Agent
+.gemini/
+.agent/
+brain/
 
-# Project Specific - Generated Files
-outputs/
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
-*.tiff
-*.webp
-
-# Logs
-*.log
-logs/
-log/
-
-# Cache
-.cache/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# Poetry
-poetry.lock
-
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# ComfyUI specific
-models/
-temp/
-tmp/
-
-# Generated content
-manga/
-images/
-panels/
-*.pdf
-
-# API keys and secrets (double check)
-config.json
-secrets.json
-api_keys.txt
-
-# Model artifacts (large binary files)
-*.safetensors
-*.ckpt
-*.pth
-*.pt
-*.bin
-*.onnx
-artifacts/
-ComfyUI-master/models/
-archive/models/*
-!archive/models/README.md
-
-# HuggingFace cache
-.cache/huggingface/
-
-# Generated pipeline outputs
-manga_output.zip
-scene_plan.json
-bubbles.json
+# Archive
+archive/legacy/

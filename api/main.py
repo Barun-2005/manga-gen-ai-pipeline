@@ -7,12 +7,31 @@ Handles manga generation requests.
 """
 
 import os
+import sys
 import json
 import uuid
 import asyncio
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
+
+# Add project root to path for imports
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Loaded environment from {env_path}")
+    else:
+        print("⚠️ No .env file found - using system environment variables")
+        print(f"   Create one by copying .env.example to .env")
+except ImportError:
+    print("⚠️ python-dotenv not installed. Run: pip install python-dotenv")
+    print("   Using system environment variables only")
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,11 +59,27 @@ class GenerateRequest(BaseModel):
     characters: Optional[List[CharacterInput]] = None
 
 
+class StepStatus(BaseModel):
+    """Status of a generation step."""
+    name: str
+    status: str  # "pending", "in_progress", "completed"
+    duration: Optional[str] = None
+
+
 class JobStatus(BaseModel):
     job_id: str
     status: str  # "pending", "generating", "completed", "failed"
     progress: int  # 0-100
     current_step: str
+    
+    # Enhanced tracking for live preview
+    steps: Optional[List[StepStatus]] = None
+    current_panel: Optional[int] = None
+    total_panels: Optional[int] = None
+    panel_previews: Optional[List[str]] = None  # URLs of generated panels
+    log_messages: Optional[List[str]] = None  # Terminal-style log
+    layout: Optional[str] = None
+    
     result: Optional[dict] = None
     error: Optional[str] = None
 
@@ -90,6 +125,48 @@ async def root():
     }
 
 
+class EnhanceRequest(BaseModel):
+    prompt: str
+
+
+class EnhanceResponse(BaseModel):
+    original: str
+    enhanced: str
+
+
+@app.post("/api/enhance-prompt", response_model=EnhanceResponse)
+async def enhance_prompt(request: EnhanceRequest):
+    """Use AI to improve a story prompt."""
+    
+    try:
+        from src.ai.story_director import StoryDirector
+        director = StoryDirector()  # Uses FallbackLLM automatically!
+        enhanced = director.enhance_prompt(request.prompt)
+        return EnhanceResponse(original=request.prompt, enhanced=enhanced)
+    except Exception as e:
+        print(f"Enhance prompt error: {e}")
+        # Fallback: just add some details without AI
+        enhanced = f"{request.prompt}. A dramatic tale with intense action, emotional depth, and stunning visuals."
+        return EnhanceResponse(original=request.prompt, enhanced=enhanced)
+
+
+@app.get("/api/gallery")
+async def get_gallery_prompts():
+    """Get AI-generated gallery image prompts."""
+    
+    # Static gallery - no need to call LLM for this
+    return {
+        "images": [
+            {"title": "Samurai at Sunset", "genre": "action", "prompt": "samurai warrior silhouette against orange sunset, katana drawn, cherry blossoms falling"},
+            {"title": "Neon City", "genre": "sci-fi", "prompt": "cyberpunk street scene, neon signs, rain reflections, anime girl with umbrella"},
+            {"title": "Dragon's Roar", "genre": "fantasy", "prompt": "dragon breathing fire, medieval castle, brave knight with shield, epic battle"},
+            {"title": "School Days", "genre": "slice-of-life", "prompt": "anime schoolgirls walking home, cherry blossom trees, peaceful afternoon"},
+            {"title": "Dark Forest", "genre": "horror", "prompt": "mysterious figure in dark forest, glowing eyes, full moon, mist"},
+            {"title": "First Love", "genre": "romance", "prompt": "anime couple under umbrella, rain, city lights, romantic atmosphere"}
+        ]
+    }
+
+
 @app.post("/api/generate", response_model=JobStatus)
 async def start_generation(
     request: GenerateRequest,
@@ -100,12 +177,27 @@ async def start_generation(
     # Create job ID
     job_id = str(uuid.uuid4())[:8]
     
-    # Initialize job status
+    # Calculate total panels based on layout
+    panels_per_page = {"2x2": 4, "2x3": 6, "3x3": 9, "full": 1}.get(request.layout, 4)
+    total_panels = panels_per_page * request.pages
+    
+    # Initialize job status with enhanced tracking
     job = JobStatus(
         job_id=job_id,
         status="pending",
         progress=0,
-        current_step="Initializing..."
+        current_step="Initializing...",
+        steps=[
+            StepStatus(name="Story analyzed", status="pending"),
+            StepStatus(name="Generating panels", status="pending"),
+            StepStatus(name="Adding dialogue", status="pending"),
+            StepStatus(name="Composing pages", status="pending"),
+        ],
+        current_panel=0,
+        total_panels=total_panels,
+        panel_previews=[],
+        log_messages=[f"> Job {job_id} created", f"> Style: {request.style}", f"> Layout: {request.layout}"],
+        layout=request.layout
     )
     jobs[job_id] = job
     
@@ -185,28 +277,79 @@ async def get_page_preview(job_id: str, page_num: int):
     raise HTTPException(status_code=404, detail="Page not found")
 
 
+class RegenerateRequest(BaseModel):
+    panel_index: int
+    feedback: Optional[str] = None  # User feedback like "make character angrier"
+    use_llm: bool = True  # Let LLM adjust prompt based on feedback
+
+
+@app.post("/api/regenerate/{job_id}")
+async def regenerate_panel(job_id: str, request: RegenerateRequest):
+    """Regenerate a single panel with optional user feedback."""
+    
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = jobs[job_id]
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail="Generation must be complete first")
+    
+    # TODO: Implement actual regeneration
+    # 1. Get original panel prompt
+    # 2. If feedback, use LLM to modify prompt
+    # 3. Generate new image
+    # 4. Update result
+    
+    # For now, return success placeholder
+    return {
+        "success": True,
+        "message": f"Panel {request.panel_index} queued for regeneration",
+        "job_id": job_id
+    }
+
+
 # ============================================
 # Background Generation
 # ============================================
 
-async def run_generation(job_id: str, request: GenerateRequest):
-    """Run manga generation in background."""
+def run_generation(job_id: str, request: GenerateRequest):
+    """Run manga generation in background with detailed progress tracking."""
     
     job = jobs[job_id]
+    
+    def log(msg: str):
+        """Add a log message."""
+        if job.log_messages is not None:
+            job.log_messages.append(f"> {msg}")
+    
+    def update_step(idx: int, status: str, duration: str = None):
+        """Update a step's status."""
+        if job.steps and 0 <= idx < len(job.steps):
+            job.steps[idx].status = status
+            if duration:
+                job.steps[idx].duration = duration
     
     try:
         # Import here to avoid circular imports
         from scripts.generate_manga import MangaGenerator, MangaConfig
+        import time
+        
+        step_start = time.time()
         
         # Update status
         job.status = "generating"
         job.current_step = "Setting up..."
         job.progress = 5
+        log("Initializing generation pipeline...")
         
-        # Get API key
+        # Get API keys - FallbackLLM handles provider selection automatically
         groq_key = os.environ.get("GROQ_API_KEY")
-        if not groq_key:
-            raise ValueError("GROQ_API_KEY not set")
+        nvidia_key = os.environ.get("NVIDIA_API_KEY")
+        
+        if not groq_key and not nvidia_key:
+            raise ValueError("Need GROQ_API_KEY or NVIDIA_API_KEY")
+        
+        log(f"API keys found: Groq={'yes' if groq_key else 'no'}, NVIDIA={'yes' if nvidia_key else 'no'}")
         
         # Create config
         config = MangaConfig(
@@ -214,37 +357,150 @@ async def run_generation(job_id: str, request: GenerateRequest):
             style=request.style,
             layout=request.layout,
             pages=request.pages,
-            output_dir=str(OUTPUT_DIR / job_id)
+            output_dir=str(OUTPUT_DIR / job_id),
+            is_complete_story=False  # Default to chapter mode
         )
         
         # Create output directory for this job
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
         
-        job.current_step = "Generating scenes..."
+        # Step 1: Story Planning
+        update_step(0, "in_progress")
+        job.current_step = "Planning story with AI..."
         job.progress = 10
+        log("Analyzing story prompt...")
         
         # Generate
         generator = MangaGenerator(config)
         
-        # Update progress during generation
-        job.current_step = "Generating panels..."
-        job.progress = 30
+        # Prepare characters from request
+        characters = None
+        if request.characters:
+            characters = [
+                {
+                    "name": c.name,
+                    "appearance": c.appearance,
+                    "personality": c.personality or ""
+                }
+                for c in request.characters
+            ]
+            log(f"Characters loaded: {', '.join(c.name for c in request.characters)}")
         
+        step_duration = f"{time.time() - step_start:.1f}s"
+        update_step(0, "completed", step_duration)
+        log(f"Story planning complete ({step_duration})")
+        
+        # Step 2: Generate Panels
+        step_start = time.time()
+        update_step(1, "in_progress")
+        job.current_step = "Generating panels..."
+        job.progress = 20
+        log(f"Starting parallel panel generation ({job.total_panels} panels)...")
+        
+        # Define callback for real-time progress updates
+        def progress_handler(msg: str, percent: int, data: Optional[Dict] = None):
+            job.current_step = msg
+            if percent >= 0:
+                job.progress = percent
+            log(msg)
+            
+            # Handle live preview updates
+            if data and data.get("event") == "page_complete":
+                if job.result is None:
+                    job.result = {"pages": [], "title": request.title}
+                
+                # Check if page already exists to avoid duplicates
+                page_exists = False
+                if "pages" in job.result:
+                    for p in job.result["pages"]:
+                        if p.get("page_number") == data["page_num"]:
+                            page_exists = True
+                            break
+                
+                if not page_exists:
+                    # Store absolute path for API FileResponse serving
+                    job.result["pages"].append({
+                        "page_number": data["page_num"],
+                        "page_image": data["image_path"],
+                        "panels": [] # Panels added here if needed
+                    })
+                    log(f"📸 Live preview ready for Page {data['page_num']}")
+            
+            elif data and data.get("event") == "panel_complete":
+                # Handle panel live preview
+                if job.panel_previews is None:
+                    job.panel_previews = []
+                
+                # Ensure list is large enough
+                idx = data["panel_index"]
+                while len(job.panel_previews) <= idx:
+                    job.panel_previews.append("")
+                
+                # Store RELATIVE URL for direct frontend loading
+                filename = Path(data["image_path"]).name
+                relative_url = f"/outputs/{job_id}/{filename}"
+                
+                job.panel_previews[idx] = relative_url
+                
+                # Update counters and progress
+                job.current_panel = idx + 1
+                if job.total_panels and job.total_panels > 0:
+                    # Progress logic: 20% (start) -> 90% (panels done)
+                    # We map panel completion to the 20-90% range
+                    panel_prog = 20 + int(70 * (idx + 1) / job.total_panels)
+                    job.progress = panel_prog
+                    
+                log(f"🖼️ Generated panel {idx + 1} ({job.progress}%)")
+            
+            elif data and data.get("event") == "step_started":
+                # Handle pipeline step transitions for Timeline
+                step_type = data.get("step")
+                if job.steps:
+                    if step_type == "dialogue":
+                        job.steps[1].status = "completed"  # Generating panels
+                        job.steps[2].status = "in_progress" # Adding dialogue
+                    elif step_type == "composition":
+                        job.steps[2].status = "completed"  # Adding dialogue
+                        job.steps[3].status = "in_progress" # Composing pages
+
+            # Detect Story Analysis completion via log message
+            if "Story planning complete" in msg and job.steps:
+                job.steps[0].status = "completed"
+                job.steps[1].status = "in_progress" # Start generating panels
+
+        # This is where we hook into panel generation
         result = generator.generate_chapter(
             story_prompt=request.story_prompt,
-            groq_api_key=groq_key
+            groq_api_key=groq_key or "",
+            characters=characters,
+            progress_callback=progress_handler
         )
+        
+        step_duration = f"{time.time() - step_start:.1f}s"
+        update_step(1, "completed", step_duration)
+        log(f"Panel generation complete ({step_duration})")
+        
+        # Step 3: Dialogue (happens inside generate_chapter)
+        update_step(2, "completed", "auto")
+        
+        # Step 4: Composing
+        update_step(3, "completed", "auto")
+        log("Page composition complete")
         
         # Complete
         job.status = "completed"
         job.progress = 100
         job.current_step = "Done!"
         job.result = result
+        log("✅ Generation complete!")
         
     except Exception as e:
+        import traceback
+        print(f"Generation error: {traceback.format_exc()}")
         job.status = "failed"
         job.error = str(e)
         job.current_step = "Failed"
+        log(f"❌ Error: {str(e)}")
 
 
 # ============================================

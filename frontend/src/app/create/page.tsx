@@ -22,6 +22,7 @@ export default function CreatePage() {
         { id: "1", name: "Akira", role: "Protagonist", appearance: "Spiky blue hair, scar on left cheek. Stoic expression." }
     ]);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isEnhancing, setIsEnhancing] = useState(false);
     const [error, setError] = useState("");
 
     const addCharacter = () => {
@@ -37,6 +38,31 @@ export default function CreatePage() {
         setCharacters(characters.map(c => c.id === id ? { ...c, [field]: value } : c));
     };
 
+    const handleEnhancePrompt = async () => {
+        if (!storyPrompt.trim()) {
+            setError("Enter a prompt first to enhance");
+            return;
+        }
+
+        setIsEnhancing(true);
+        try {
+            const response = await fetch("http://localhost:8000/api/enhance-prompt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: storyPrompt })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setStoryPrompt(data.enhanced);
+            }
+        } catch (err) {
+            console.error("Enhance error:", err);
+        } finally {
+            setIsEnhancing(false);
+        }
+    };
+
     const handleGenerate = async () => {
         if (!storyPrompt.trim()) {
             setError("Please enter a story prompt");
@@ -47,12 +73,14 @@ export default function CreatePage() {
         setError("");
 
         try {
-            // Build prompt with character descriptions
+            // Build prompt
             let fullPrompt = storyPrompt;
             if (characters.length > 0) {
                 const charDescs = characters.map(c => `${c.name}: ${c.appearance}`).join(". ");
                 fullPrompt = `${storyPrompt}\n\nCharacters: ${charDescs}`;
             }
+
+            console.log("Submitting generation request...");
 
             const response = await fetch("http://localhost:8000/api/generate", {
                 method: "POST",
@@ -72,13 +100,23 @@ export default function CreatePage() {
             });
 
             if (!response.ok) {
-                throw new Error("Failed to start generation");
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || "Failed to start generation");
             }
 
             const data = await response.json();
-            router.push(`/generate/${data.job_id}`);
+            console.log("Generation success, checking job_id:", data);
+
+            if (!data.job_id) {
+                throw new Error("Backend returned no job ID");
+            }
+
+            // FORCE HARD REDIRECT - The nuclear option since router.push isn't working for the user
+            console.log("Redirecting to:", `/generate/${data.job_id}`);
+            window.location.href = `/generate/${data.job_id}`;
 
         } catch (err) {
+            console.error("Generation failed:", err);
             setError(err instanceof Error ? err.message : "Generation failed. Is the backend running?");
             setIsGenerating(false);
         }
@@ -132,8 +170,15 @@ export default function CreatePage() {
                                 />
                                 <div className="flex justify-between items-center px-1">
                                     <span className="text-xs text-white/30">{storyPrompt.length} characters</span>
-                                    <button className="text-xs text-[#38e07b] hover:text-white transition-colors flex items-center gap-1">
-                                        <span className="material-symbols-outlined text-[14px]">auto_awesome</span> Improve Prompt
+                                    <button
+                                        onClick={handleEnhancePrompt}
+                                        disabled={isEnhancing}
+                                        className="text-xs text-[#38e07b] hover:text-white transition-colors flex items-center gap-1 disabled:opacity-50"
+                                    >
+                                        <span className={`material-symbols-outlined text-[14px] ${isEnhancing ? 'animate-spin' : ''}`}>
+                                            {isEnhancing ? 'sync' : 'auto_awesome'}
+                                        </span>
+                                        {isEnhancing ? 'Enhancing...' : 'Improve Prompt'}
                                     </button>
                                 </div>
                             </div>
@@ -211,10 +256,14 @@ export default function CreatePage() {
                                         onChange={() => setStyle("bw_manga")}
                                         className="peer sr-only"
                                     />
-                                    <div className="bg-black/40 rounded-lg overflow-hidden border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:shadow-neon transition-all h-32 relative flex items-center justify-center">
-                                        <div className="text-center">
-                                            <span className="material-symbols-outlined text-4xl text-white/70 group-hover:text-white transition-colors">contrast</span>
-                                            <p className="text-white text-sm mt-2">B&W Manga</p>
+                                    <div className="rounded-lg overflow-hidden border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:shadow-neon transition-all h-32 relative">
+                                        <img
+                                            src="https://image.pollinations.ai/prompt/black%20and%20white%20manga%20panel%2C%20samurai%20warrior%2C%20dramatic%20lighting%2C%20high%20contrast%2C%20ink%20style?width=256&height=256&nologo=true&seed=42"
+                                            alt="B&W Manga Style"
+                                            className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex items-end p-3">
+                                            <p className="text-white text-sm font-bold">B&W Manga</p>
                                         </div>
                                         <div className="absolute top-2 right-2 text-[#38e07b] opacity-0 peer-checked:opacity-100 transition-opacity">
                                             <span className="material-symbols-outlined filled">check_circle</span>
@@ -229,10 +278,14 @@ export default function CreatePage() {
                                         onChange={() => setStyle("color_anime")}
                                         className="peer sr-only"
                                     />
-                                    <div className="bg-black/40 rounded-lg overflow-hidden border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:shadow-neon transition-all h-32 relative flex items-center justify-center">
-                                        <div className="text-center">
-                                            <span className="material-symbols-outlined text-4xl text-white/70 group-hover:text-white transition-colors">colors</span>
-                                            <p className="text-white text-sm mt-2">Color Anime</p>
+                                    <div className="rounded-lg overflow-hidden border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:shadow-neon transition-all h-32 relative">
+                                        <img
+                                            src="https://image.pollinations.ai/prompt/colorful%20anime%20scene%2C%20vibrant%20colors%2C%20magical%20girl%2C%20studio%20ghibli%20style?width=256&height=256&nologo=true&seed=42"
+                                            alt="Color Anime Style"
+                                            className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex items-end p-3">
+                                            <p className="text-white text-sm font-bold">Color Anime</p>
                                         </div>
                                         <div className="absolute top-2 right-2 text-[#38e07b] opacity-0 peer-checked:opacity-100 transition-opacity">
                                             <span className="material-symbols-outlined filled">check_circle</span>

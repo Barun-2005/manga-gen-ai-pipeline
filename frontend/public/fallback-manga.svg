@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" fill="#16261e"/>
+  <rect x="48" y="48" width="416" height="416" rx="16" stroke="#264532" stroke-width="4" fill="none"/>
+  <path d="M256 160 L256 280" stroke="#38e07b" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="256" cy="320" r="8" fill="#38e07b"/>
+  <text x="256" y="380" text-anchor="middle" fill="#38e07b" font-family="sans-serif" font-size="24" font-weight="bold">Loading...</text>
+</svg>

@@ -23,13 +23,16 @@
 ::-webkit-scrollbar {
   width: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: #0a110e;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #264532;
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #38e07b;
 }
@@ -46,6 +49,7 @@
 .shadow-neon {
   box-shadow: 0 0 10px rgba(56, 224, 123, 0.3), 0 0 20px rgba(56, 224, 123, 0.1);
 }
+
 .shadow-neon-hover {
   box-shadow: 0 0 15px rgba(56, 224, 123, 0.5), 0 0 30px rgba(56, 224, 123, 0.2);
 }
@@ -75,6 +79,7 @@ body {
     'GRAD' 0,
     'opsz' 24;
 }
+
 .material-symbols-outlined.filled {
   font-variation-settings:
     'FILL' 1,
@@ -85,7 +90,31 @@ body {
 
 /* Animation for gradient text */
 @keyframes gradient {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Fix dropdown styling for dark theme */
+select {
+  background-color: #16261e;
+  color: white;
+}
+
+select option {
+  background: #16261e;
+  color: white;
+  padding: 8px;
+}
+
+select option:hover {
+  background: #264532;
 }
