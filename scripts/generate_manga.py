@@ -414,32 +414,50 @@ class MangaGenerator:
         return str(output_path)
     
     def _create_pdf(self, chapter_pages: List[Dict]) -> str:
-        """Combine all pages into a single PDF."""
+        """Create high-quality PDF from manga pages with proper metadata."""
         
         from PIL import Image
+        from datetime import datetime
         
         print("\n📄 Creating chapter PDF...")
         
         page_images = []
         for page_data in sorted(chapter_pages, key=lambda x: x['page_number']):
             if os.path.exists(page_data['page_image']):
-                img = Image.open(page_data['page_image'])
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                page_images.append(img)
+                try:
+                    img = Image.open(page_data['page_image'])
+                    # Convert RGBA to RGB if needed (PDF doesn't support RGBA)
+                    if img.mode == 'RGBA':
+                        rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                        rgb_img.paste(img, mask=img.split()[3])  # Use alpha as mask
+                        img = rgb_img
+                    elif img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    page_images.append(img)
+                except Exception as e:
+                    print(f"   ⚠️ Error loading page {page_data['page_number']}: {e}")
         
         pdf_path = self.output_dir / f"{self.config.title.replace(' ', '_')}_chapter.pdf"
         
         if page_images:
-            page_images[0].save(
-                pdf_path,
-                "PDF",
-                resolution=150,
-                save_all=True,
-                append_images=page_images[1:] if len(page_images) > 1 else []
-            )
+            try:
+                page_images[0].save(
+                    pdf_path,
+                    "PDF",
+                    resolution=300.0,  # High resolution for quality
+                    quality=95,  # High JPEG quality inside PDF
+                    save_all=True,
+                    append_images=page_images[1:] if len(page_images) > 1 else [],
+                    # PDF metadata
+                    title=self.config.title,
+                    author="MangaGen AI",
+                    creator=f"MangaGen v2.0 | {datetime.now().strftime('%Y-%m-%d')}"
+                )
+                print(f"   ✅ Saved: {pdf_path} ({len(page_images)} pages, 300 DPI)")
+            except Exception as e:
+                print(f"   ❌ PDF creation error: {e}")
+                return ""
         
-        print(f"   ✅ Saved: {pdf_path}")
         return str(pdf_path)
 
 
