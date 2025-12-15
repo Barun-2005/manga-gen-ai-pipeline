@@ -218,12 +218,92 @@ async def start_generation(
     return job
 
 
+
 @app.get("/api/status/{job_id}", response_model=JobStatus)
 async def get_status(job_id: str):
     """Get job status."""
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return jobs[job_id]
+
+
+@app.post("/api/regenerate/{job_id}")
+async def regenerate_panel(job_id: str, request: RegenerateRequest):
+    """Regenerate a specific panel with optional prompt override."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = jobs[job_id]
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail="Job must be completed first")
+    if not job.result:
+        raise HTTPException(status_code=404, detail="No job result found")
+    
+    try:
+        from scripts.generate_panels_api import PollinationsGenerator
+        from src.ai.character_dna import CharacterDNAManager
+        
+        pages = job.result.get("pages", [])
+        if request.page < 1 or request.page > len(pages):
+            raise HTTPException(status_code=400, detail="Invalid page number")
+        page_data = pages[request.page - 1]
+        panels = page_data.get("panels", [])
+        if request.panel < 0 or request.panel >= len(panels):
+            raise HTTPException(status_code=400, detail="Invalid panel number")
+        panel_data = panels[request.panel]
+        
+        original_prompt = panel_data.get("prompt", panel_data.get("description", ""))
+        prompt_to_use = request.prompt_override if request.prompt_override else original_prompt
+        
+        output_dir = OUTPUT_DIR / job_id
+        output_dir.mkdir(exist_ok=True, parents=True)
+        image_generator = PollinationsGenerator(str(output_dir))
+        style = job.result.get("style", "bw_manga")
+        
+        character_dna = CharacterDNAManager(style=style)
+        for char in job.result.get("characters", []):
+            character_dna.register_character(
+                name=char.get("name", "Unknown"),
+                appearance=char.get("appearance", ""),
+                personality=char.get("personality", ""),
+                role=char.get("role", "")
+            )
+        
+        shot_type = panel_data.get("shot_type", "medium shot")
+        camera_angle = panel_data.get("camera_angle", "straight-on")
+        composition = panel_data.get("composition", "rule of thirds")
+        lighting_mood = panel_data.get("lighting_mood", "soft lighting")
+        characters_present = panel_data.get("characters_present", [])
+        
+        cinematography = f"{shot_type}, {camera_angle}, {composition}, {lighting_mood}"
+        enhanced_prompt = character_dna.enhance_panel_prompt(
+            base_prompt=f"{cinematography}, {prompt_to_use}",
+            characters_present=characters_present
+        )
+        
+        panel_filename = f"p{request.page:02d}_panel_{request.panel:02d}_regen.png"
+        new_panel_path = image_generator.generate_image(
+            prompt=enhanced_prompt,
+            filename=panel_filename,
+            style=style
+        )
+        
+        if new_panel_path:
+            panel_data["imageUrl"] = f"/outputs/{job_id}/{panel_filename}"
+            panel_data["image_path"] = new_panel_path
+            if request.prompt_override:
+                panel_data["prompt"] = request.prompt_override
+                panel_data["user_edited"] = True
+            jobs[job_id] = job
+            return {
+                "success": True,
+                "panel_url": panel_data["imageUrl"],
+                "message": f"Panel {request.panel} on page {request.page} regenerated"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Panel regeneration failed")
+    except Exception as e:
+        print(f"Regeneration error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/download/{job_id}/{file_type}")
