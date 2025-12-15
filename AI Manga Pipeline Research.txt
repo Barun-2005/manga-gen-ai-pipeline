@@ -1,0 +1,291 @@
+Architectural Paradigms for Open-Source AI Manga Generation: A Technical Deep Dive
+1. Executive Summary
+The intersection of generative artificial intelligence and sequential art has precipitated a fundamental restructuring of the comic production pipeline. Historically, the creation of manga—Japanese-style comics—has been a bifurcated discipline requiring high-level narrative composition alongside rigorous, labor-intensive illustration skills. The emergence of diffusion models and Large Language Models (LLMs) offers a mechanism to collapse this division of labor, empowering creators to function as directors of neural networks rather than manual renderers. However, the transition from discrete image generation to coherent sequential storytelling introduces the "Consistency Trilemma": the difficulty of simultaneously maintaining Character Identity, Narrative Coherence, and Visual Fidelity without incurring the prohibitive costs of enterprise-grade compute clusters.
+This report articulates a comprehensive technical architecture for an open-source AI manga generation pipeline, specifically engineered for consumer-grade hardware—typified by the NVIDIA RTX 4060 (8GB VRAM)—while leveraging hybrid cloud-local inference strategies to overcome memory bottlenecks. The proposed system synthesizes a Next.js frontend and FastAPI backend with a sophisticated image generation pipeline anchored by ComfyUI. By integrating recent advancements in distilled diffusion models (specifically Z-Image Turbo), structured LLM prompting (via Groq/Llama 3.1), and geometric computer vision algorithms for automated typesetting, this architecture provides a robust alternative to proprietary platforms.
+The analysis proceeds through a rigorous examination of the computational substrate, selecting foundational models that respect the 8GB VRAM constraint while delivering sub-second inference. It subsequently explores the narrative engine, defining JSON schemas for LLM-driven storyboarding, and creates a blueprint for a "No-LoRA" character consistency framework utilizing IP-Adapters. Furthermore, the report addresses the often-neglected domain of dialogue placement, proposing a Python-based geometric algorithm for text fitting. Finally, the architecture is benchmarked against closed-source competitors like Dashtoon and AniFusion, demonstrating how open-source modularity can rival commercial vertical integration.
+2. The Computational Substrate: Hardware Constraints and Model Selection
+The fundamental constraint of the proposed architecture is the limitation of the local hardware: the NVIDIA RTX 4060 with 8GB of VRAM. While capable of accelerating tensor operations via Tensor Cores, the memory buffer presents a hard ceiling for loading large diffusion models alongside the necessary control adapters (ControlNet, IP-Adapter) and VAE decoders. Therefore, the selection of the inference engine is not merely a matter of aesthetic preference but a critical engineering decision dictated by memory management and inference latency.
+2.1 The 8GB VRAM Bottleneck: Z-Image Turbo vs. SDXL
+Stable Diffusion XL (SDXL) has established itself as the industry standard for high-fidelity synthesis. However, the base model alone consumes approximately 6.6GB of VRAM in FP16 precision, leaving insufficient headroom for the complex conditioning required in a manga pipeline—specifically, the simultaneous loading of IP-Adapters for character consistency and ControlNets for pose guidance. Attempting to run a full SDXL pipeline on an 8GB card often necessitates aggressive model offloading to system RAM, which drastically degrades inference speed from seconds to minutes per image.
+In this context, Z-Image Turbo emerges as the optimal candidate for the local inference engine. Developed by Alibaba's Tongyi Lab, Z-Image Turbo utilizes a Scalable Single-Stream Diffusion Transformer (S3-DiT) architecture.1 Unlike the dual-stream approach of SDXL (which processes text and visual tokens separately before cross-attention), S3-DiT concatenates text, visual semantic tokens, and image VAE tokens into a unified sequence. This architectural innovation maximizes parameter efficiency, allowing the 6-billion parameter model to deliver performance comparable to larger models while maintaining a manageable memory footprint.
+Crucially, Z-Image Turbo is engineered for few-step inference, requiring only 8 Number of Function Evaluations (NFEs) to generate a high-quality image.2 Standard diffusion models typically require 20–30 steps. This reduction in sampling steps translates to sub-second latency on data-center GPUs and, more importantly, enables rapid iteration on consumer hardware. For a manga page requiring 5–8 panels, the difference between 30-step and 8-step generation is the difference between a 2-minute page generation time and a 30-second one.
+Furthermore, Z-Image Turbo exhibits superior capabilities in bilingual text rendering (English and Chinese), which is advantageous for generating on-image sound effects (SFX)—a staple of manga aesthetics that traditionally requires manual post-processing.2 The model's ability to render text natively reduces the dependency on external compositing tools for simple graphical text elements.
+2.2 Hybrid Inference Strategy: Integrating Pollinations.ai
+To further mitigate local resource contention, the architecture adopts a hybrid inference strategy. While character-centric panels require the fine-grained control of local execution (to utilize IP-Adapters and ControlNets), establishing shots, backgrounds, and non-character assets can be offloaded to the cloud.
+Pollinations.ai provides a compelling solution for this offloading. It offers a free, no-signup API that grants access to models like Flux and Turbo.4 The API operates via a simple URL construction mechanism (https://image.pollinations.ai/prompt/{encoded_prompt}), enabling the backend to fetch background assets asynchronously.
+Inference Tier	Primary Function	Model / Service	VRAM Impact (Local)	Justification
+Tier 1: Local	Character Panels, Complex Posing	Z-Image Turbo (or SDXL Lightning)	High (6-7GB)	Requires IP-Adapter for identity; strict prompt adherence needed.
+Tier 2: Cloud	Backgrounds, Objects, SFX Plates	Pollinations.ai (Flux)	Zero	Offloads compute; Flux excels at complex scenery prompts.
+Tier 3: Hybrid	Upscaling, Refinement	RealESRGAN (Local)	Low (Tiled)	Tiled upscaling prevents OOM errors; done post-generation.
+By routing background generation requests to Pollinations.ai, the local RTX 4060 is relieved of significant thermal and memory load, reserving its capacity for the computationally intensive task of character rendering.
+2.3 Optimization via NVIDIA NIM
+For deployments scaling beyond a single workstation or for users seeking maximum efficiency from their hardware, the integration of NVIDIA NIM (NVIDIA Inference Microservices) provides a standardized optimization layer. NIM containers wrap foundational models in a runtime optimized for NVIDIA GPUs, leveraging TensorRT to accelerate inference.5
+NIM microservices facilitate the deployment of optimized engines that can utilize FP8 quantization. This is particularly relevant for the RTX 4060 (Ada Lovelace architecture), which supports FP8 tensor operations. Quantizing the base model to FP8 can reduce VRAM consumption by approximately 40% compared to FP16, effectively expanding the available memory on an 8GB card to the functional equivalent of a 12GB card running unoptimized models.7 This "virtual" memory expansion allows for the simultaneous loading of multiple ControlNet models (e.g., Canny + Depth) alongside the base model, a capability otherwise impossible on this hardware tier. The FastAPI backend can interface with the local NIM container via standard REST APIs, treating it as a drop-in replacement for the native Torch pipeline.5
+3. The Narrative Engine: Structured LLM Orchestration
+Manga is not merely a collection of images; it is a structured narrative medium governed by sequential logic. A raw LLM outputting free text is insufficient for controlling a generative pipeline. The system requires a "Narrative Engine" that enforces structural rigidity on the creative process.
+3.1 Prompt Engineering and JSON Enforced Output
+To bridge the gap between narrative intent and algorithmic execution, the pipeline utilizes Llama 3.1 (hosted via Groq for low-latency inference) to transmute high-level plot summaries into machine-readable instructions. The key to effective orchestration is JSON Prompting. By constraining the LLM to output strict JSON schemas, the system eliminates parsing ambiguity and allows the backend to programmatically extract panel parameters.8
+The prompt engineering strategy for the Narrative Engine must enforce a separation of concerns: separating the story (dialogue, plot) from the direction (camera angle, lighting, style).
+System Prompt Template for Llama 3.1:
+You are a Manga Director and Technical Artist. Your goal is to convert a plot summary into a structured JSON storyboard for an AI image generator.
+You must adhere to the following rules:
+1.	OUTPUT FORMAT: Strictly JSON. No conversational text.
+2.	VISUAL PROMPTS: Must be comma-separated lists of tags. Always include 'manga style, monochrome, lineart, high contrast'.
+3.	PANELS: Break the scene into 4-6 distinct panels.
+4.	CONSISTENCY: Use the exact character names provided in the context.
+5.	CAMERA ANGLES: Specify 'dutch angle', 'close-up', 'wide shot', 'bird's eye view' for every panel.
+Response Schema:
+{
+"page_id": int,
+"layout_preset": "4-koma" | "dynamic_action" | "montage",
+"panels":,
+"composition_guide": "string (e.g., 'rule_of_thirds')",
+"dialogue": [
+{"speaker": "string", "text": "string", "type": "speech_bubble" | "thought_bubble" | "narration_box"}
+]
+}
+]
+}
+This structured approach ensures that the output is immediately actionable by the backend code. The visual_prompt field is specifically engineered to contain the "trigger words" required by the image model (e.g., screentone, ink sketch), while the dialogue object is parsed by the typesetting engine later in the pipeline.8
+3.2 Context Window Management and Story Coherence
+A pervasive failure mode in AI storytelling is "object permanence" or plot holes—where an object held in Panel 1 disappears in Panel 2. To mitigate this, the FastAPI backend implements a Sliding Context Window.
+The backend maintains a state object representing the "World Context." This object includes the current location, time of day, and the active inventory of characters (e.g., {"Akira": {"holding": "sword", "condition": "injured"}}). When requesting the storyboard for Page N, the prompt to the LLM includes not just the plot segment for Page N, but also a summarized state of Page N-1. This recursive context injection forces the LLM to maintain continuity (e.g., "Akira is still holding the sword from the previous page").11
+Furthermore, for long-running series, a Vector Database (RAG - Retrieval Augmented Generation) can be integrated. The system embeds descriptions of previous key events and retrieves relevant context based on semantic similarity to the current scene. For example, if the user types "They return to the hideout," the RAG system retrieves the visual description of the "hideout" generated 50 pages ago and injects it into the prompt, ensuring the location looks consistent.11
+4. Identity Preservation: The "No-LoRA" Architecture
+The traditional method for character consistency—training a LoRA (Low-Rank Adaptation) for each character—is computationally expensive and disrupts the creative workflow. Training requires gathering a dataset, preprocessing images, and running a training loop that can take 30 minutes to an hour on an RTX 4060. For an interactive tool, this latency is unacceptable.
+The proposed architecture utilizes IP-Adapter (Image Prompt Adapter) to achieve zero-shot character consistency, effectively creating a "No-LoRA" pipeline.
+4.1 Theoretical Mechanism of IP-Adapter
+IP-Adapter functions by decoupling the cross-attention mechanism of the diffusion model. In a standard model, cross-attention layers attend primarily to the text embeddings from the CLIP text encoder. IP-Adapter introduces a parallel cross-attention layer that attends to image embeddings extracted by a CLIP Vision encoder (e.g., CLIP-ViT-H-14).12
+By injecting the semantic features of a reference image directly into the U-Net's attention layers, IP-Adapter forces the model to generate images that share the visual characteristics (identity, clothing, style) of the reference, independent of the text prompt. This allows for "instant" character creation: the user uploads a single "Character Sheet" (generated once), and the system uses it to guide all subsequent generations.13
+4.2 Implementation: The Virtual Character Sheet
+To operationalize this, the pipeline includes a specialized "Character Generator" workflow.
+1.	Sheet Generation: The user prompts the system to create a character (e.g., "Cyberpunk samurai girl"). The system generates a "Character Sheet" comprising a front view, side view, and 3/4 view on a neutral background. This image serves as the "Reference Source."
+2.	Runtime Injection: During panel generation, the backend utilizes ComfyUI's IPAdapter Advanced node. The Character Sheet is passed as the input image.
+○	Weighting: A weight of 0.6 - 0.8 is empirically optimal. Higher weights (approx. 1.0) tend to override the pose information from the text prompt, causing the character to rigidly stick to the reference pose. Lower weights (approx. 0.5) lose facial likeness.14
+○	FaceID Integration: For enhanced facial consistency, the pipeline can layer IP-Adapter-FaceID alongside the standard IP-Adapter. FaceID uses the InsightFace model to extract facial structure embeddings (geometry) rather than just semantic style, ensuring that the bone structure and features remain constant even across extreme angles.15
+4.3 Seed Locking and ControlNet Guidance
+While IP-Adapter handles identity, ControlNet handles structure. To ensure characters interact correctly with their environment, the pipeline relies on Seed Locking combined with ControlNet OpenPose.
+●	Seed Strategy: For a sequence of panels in the same location, the seed used for the background generation is locked (fixed). This ensures that the texture of walls, the shape of clouds, and lighting artifacts remain statistically similar.
+●	Pose Control: The character's pose is dictated by an OpenPose skeleton, which is either generated by the LLM (describing a pose which is then converted to a skeleton via a text-to-pose model) or selected from a library of "manga action poses." This skeleton is fed into ControlNetApply, guiding the diffusion process to place the character correctly within the locked background seed.17
+5. The Visual Synthesis Pipeline: ComfyUI Architecture
+ComfyUI serves as the execution engine for the visual pipeline. Its node-based architecture allows for the precise orchestration of the complex workflows described above. The backend interacts with ComfyUI via a WebSocket API, submitting workflows as JSON graphs and listening for execution events.
+5.1 Dynamic Panel Layout Generation
+A critical innovation in this architecture is the automated generation of panel layouts using the comfyui_panels custom node suite.19
+Algorithm:
+1.	Input: The layout_preset from the LLM storyboard (e.g., "dynamic_action").
+2.	Panel Layout Node: The Panel Layout node defines a series of "cuts" on a canvas. A "dynamic" layout might involve diagonal cuts or overlapping polygons, whereas a "4-koma" layout involves strictly vertical cuts.
+3.	Mask Generation: The Panel to Mask node converts these geometric cuts into binary masks.
+4.	Composite Rendering: The pipeline executes the Z-Image Turbo generation per panel. Each panel is generated as a separate latent image (constrained by the aspect ratio of the cut) and then composited onto the final page using the generated masks. This ensures that the diffusion model focuses its full resolution on the content of the panel, rather than trying to render a whole page of tiny panels at once (which leads to "melted" faces).20
+5.2 Workflow Graph Construction
+The master workflow executed by the backend consists of the following logic flow:
+1.	Load Checkpoint: Load Z-Image-Turbo.safetensors (or optimized SDXL).
+2.	Load LoRA: Inject style LoRAs like LineAniRedmond or Manga-Lineart.21 These are trained on line art and help force the model into a monochromatic mode, resisting its tendency to act like a photo-generator.
+3.	IP-Adapter Stack: Load IPAdapter Plus model. Input the user's Character Sheet. Connect to the Model patcher.
+4.	ControlNet Stack: Load ControlNet Canny or Sketch. If the user provided a rough sketch on the frontend canvas, this guides the composition.
+5.	Latent Composite:
+○	Iterate through each panel defined in the JSON.
+○	Generate latent for Panel A (Prompt A + Character A IP-Adapter).
+○	Generate latent for Panel B (Prompt B + Background IP-Adapter).
+○	Mask and composite latents into a single page latent.
+6.	KSampler: Perform the denoising (8 steps) on the composited latent.
+7.	Post-Processing: Decode VAE. Apply BlendScreentone (from Sketch2Manga nodes) to convert grayscale gradients into authentic halftone dot patterns.23
+8.	Save: Output the base64 image string to the WebSocket.
+5.3 Technical Implementation: Python API Client
+The following Python code demonstrates the mechanism for triggering this complex workflow from the FastAPI backend. It utilizes the WebSocket connection to monitor progress, essential for providing real-time feedback to the user.17
+
+Python
+
+
+import websocket
+import json
+import urllib.request
+import uuid
+
+SERVER_ADDRESS = "127.0.0.1:8188"
+CLIENT_ID = str(uuid.uuid4())
+
+def queue_prompt(prompt_workflow):
+    """
+    Submits the JSON workflow to the ComfyUI server.
+    """
+    p = {"prompt": prompt_workflow, "client_id": CLIENT_ID}
+    data = json.dumps(p).encode('utf-8')
+    req = urllib.request.Request(f"http://{SERVER_ADDRESS}/prompt", data=data)
+    return json.loads(urllib.request.urlopen(req).read())
+
+def execute_manga_page(storyboard_json, character_sheet_path):
+    """
+    Orchestrates the generation of a full manga page based on the LLM storyboard.
+    """
+    # Load the template workflow (exported from ComfyUI as API JSON)
+    with open("templates/manga_page_workflow.json", "r") as f:
+        workflow = json.load(f)
+
+    # 1. Configure Layout
+    # Inject parameters into the ComfyUI Panels node (Node ID 10 in template)
+    workflow["10"]["inputs"]["layout_type"] = storyboard_json["layout_preset"]
+    
+    # 2. Configure Panels Loop
+    # Note: In a real implementation, this would involve dynamically duplicating 
+    # sampler nodes for each panel or using a custom script node.
+    # For this snippet, we assume a fixed 4-panel template.
+    
+    for i, panel in enumerate(storyboard_json["panels"]):
+        node_id = str(20 + i) # Assuming prompt nodes start at ID 20
+        
+        # Construct the Prompt
+        positive_prompt = f"{panel['visual_prompt']}, manga style, monochrome, lineart"
+        workflow[node_id]["inputs"]["text"] = positive_prompt
+        
+        # Inject Character Reference if character is present
+        if len(panel["characters"]) > 0:
+             # Link IP-Adapter to this panel's KSampler
+             pass 
+
+    # 3. Trigger Generation
+    response = queue_prompt(workflow)
+    prompt_id = response['prompt_id']
+    
+    # 4. Listen for completion (WebSocket)
+    ws = websocket.WebSocket()
+    ws.connect(f"ws://{SERVER_ADDRESS}/ws?clientId={CLIENT_ID}")
+    while True:
+        out = ws.recv()
+        if isinstance(out, str):
+            message = json.loads(out)
+            if message['type'] == 'executing' and message['data']['node'] is None:
+                # Execution finished
+                break
+    
+    return prompt_id
+
+6. Geometric Computer Vision: Dialogue Placement and Typesetting
+Perhaps the most technically challenging aspect of "auto-manga" is not the image generation, but the typesetting. Manga relies on complex bubble shapes (speech, thought, scream) and a specific reading flow (Right-to-Left, Top-to-Bottom). Most AI tools fail here, simply pasting text blindly. This architecture proposes a deterministic, geometric approach using Python libraries Shapely and PIL (Pillow).
+6.1 Bubble Placement Strategy
+The system does not rely on the diffusion model to generate bubbles (which results in illegible gibberish). Instead, bubbles are vector overlays added post-generation.
+Auto-Placement Algorithm:
+1.	Saliency Mapping: The backend analyzes the generated panel image to create a "Saliency Map" (using OpenCV or a lightweight model like U-2-Net). This map identifies "high-interest" areas (faces, hands, detailed objects).
+2.	Negative Space Search: The algorithm searches for the largest contiguous regions of "low saliency" (e.g., sky, blank walls, shadows).
+3.	Flow Heuristic: It prioritizes the top-right and top-left corners of the panel, adhering to the "Reverse-Z" reading pattern.
+4.	Anchoring: A speech bubble is anchored in the optimal negative space, with a "tail" vector pointing towards the centroid of the speaker's character mask (identified via the segmentation mask generated during the ComfyUI layout phase).11
+6.2 Geometric Text Fitting Algorithm
+Once the bubble location and shape (e.g., ellipse) are defined, the text must be wrapped to fit inside it. A standard rectangular wrap is insufficient for elliptical bubbles.
+The architecture implements a Scanline Intersection Algorithm:
+1.	Polygon Definition: The bubble is defined as a shapely.Polygon.
+2.	Line Slicing: The polygon is sliced into horizontal segments corresponding to the font height.
+3.	Chord Calculation: For each slice, the algorithm calculates the available width (the length of the chord across the ellipse).
+4.	Text Flow: Words are placed into these lines. If a line exceeds the chord length, the word is pushed to the next line.
+5.	Scaling: If the total text height exceeds the vertical bounds of the polygon, the polygon is iteratively scaled up until the text fits.
+Technical Implementation Details (Python):
+
+Python
+
+
+from shapely.geometry import Polygon, LineString
+from PIL import ImageFont, ImageDraw
+
+def fit_text_to_polygon(text, polygon_points, font_path, start_font_size=20):
+    """
+    Fits text inside an arbitrary polygon by calculating scanline widths.
+    """
+    poly = Polygon(polygon_points)
+    font_size = start_font_size
+    font = ImageFont.truetype(font_path, font_size)
+    
+    min_x, min_y, max_x, max_y = poly.bounds
+    line_height = font.getbbox("Ay")
+    
+    # Iterate to find optimal fit
+    while True:
+        lines =
+        words = text.split()
+        current_y = min_y + (max_y - min_y) * 0.1 # Start 10% down padding
+        
+        current_line_words =
+        
+        # Scan through vertical space
+        while words and current_y < max_y:
+            # Create a horizontal line at current_y
+            scanline = LineString([(min_x, current_y), (max_x, current_y)])
+            intersection = poly.intersection(scanline)
+            
+            if intersection.is_empty:
+                current_y += line_height
+                continue
+                
+            # Get available width at this height
+            available_width = intersection.length * 0.8 # 20% padding
+            
+            # Fill line
+            line_str = ""
+            while words:
+                test_line = line_str + " " + words
+                text_width = font.getlength(test_line)
+                if text_width <= available_width:
+                    line_str = test_line
+                    words.pop(0)
+                else:
+                    break
+            
+            if line_str:
+                lines.append((line_str, current_y, intersection.centroid.x))
+            current_y += line_height
+            
+        if not words: 
+            # All words fit!
+            return lines, font
+        else:
+            # Text didn't fit, shrink font or expand bubble
+            font_size -= 2
+            if font_size < 10:
+                raise Exception("Text too long for bubble")
+            font = ImageFont.truetype(font_path, font_size)
+            line_height = font.getbbox("Ay")
+
+This ensures that the dialogue looks professional and respects the geometric constraints of the speech bubbles, addressing a common quality failure in AI comics.27
+7. Quality Assurance and Competitor Analysis
+7.1 Avoiding the "AI Look"
+The "AI Look" in manga is characterized by glossy gradients, inconsistent line weights, and generic "anime" features. To combat this, the pipeline enforces Lineart Control and Texture Post-Processing.
+●	Screentone Synthesis: Raw AI output often contains smooth grays that look digital. The BlendScreentone node (Sketch2Manga pack) mathematically converts these grayscale values into varying densities of black dots (halftone). This introduces high-frequency noise that mimics the quantization of printed media, breaking the "smoothness" that betrays AI generation.23
+●	Line Weight Hierarchy: By utilizing ControlNet Lineart models (trained on high-contrast ink drawings), the system enforces a distinction between contour lines (thick) and texture lines (thin), a hierarchy often lost in standard SDXL generations.21
+7.2 Competitor Benchmarking
+The proposed open-source architecture offers distinct advantages over proprietary market leaders.
+●	Dashtoon: This platform operates on a "freemium" model with a closed ecosystem. Its primary strength is "Style DNA," a system for consistent characters.32 The open-source pipeline replicates this using IP-Adapter but offers superior flexibility. Dashtoon's closed UI prevents users from injecting custom ControlNets or using specific bleeding-edge checkpoints. The proposed architecture allows for the integration of any new HuggingFace model immediately upon release.
+●	AniFusion: Likely relies on standard, non-quantized SDXL pipelines, which typically require paid credits or high-end cloud GPUs. By optimizing for the RTX 4060 via Z-Image Turbo and NIM quantization, the open-source pipeline dramatically reduces the "cost per page" to near zero (excluding electricity), democratizing access for independent creators who cannot afford subscription fees.3
+8. Conclusion
+This report has outlined a production-ready architecture for an open-source AI manga pipeline that effectively navigates the hardware constraints of the RTX 4060. By replacing the resource-heavy SDXL with the optimized Z-Image Turbo, leveraging Pollinations.ai for background offloading, and employing NVIDIA NIM for quantization, the system achieves a delicate balance between visual fidelity and inference latency.
+The architecture solves the "Consistency Trilemma" through a decoupled approach: IP-Adapters maintain character identity without training overhead; JSON-enforced LLM prompts ensure narrative and structural coherence; and geometric typesetting algorithms guarantee that the final output is not just a collection of images, but a readable, sequential narrative.
+This modular, code-first approach provides a robust alternative to proprietary walled gardens. It empowers creators to own their pipeline, modify the underlying logic, and integrate the latest research breakthroughs as they emerge. As generative media continues to evolve, this architecture serves as a foundational blueprint for the next generation of assisted creative tools, moving the medium from stochastic image generation to directed, intentional storytelling.
+Works cited
+1.	40+ Best Stable Diffusion Models 2025 (Free & Updated) - Aiarty Image Enhancer, accessed on December 15, 2025, https://www.aiarty.com/stable-diffusion-guide/best-stable-diffusion-models.htm
+2.	Tongyi-MAI/Z-Image-Turbo - Hugging Face, accessed on December 15, 2025, https://huggingface.co/Tongyi-MAI/Z-Image-Turbo
+3.	Z-Image-Turbo | Text-to-Image by Tongyi-MAI | WaveSpeedAI, accessed on December 15, 2025, https://wavespeed.ai/models/wavespeed-ai/z-image/turbo
+4.	Pollinations.AI: Your Guide to Free, Private, and Powerful AI Creation, accessed on December 15, 2025, https://skywork.ai/skypage/en/Pollinations.AI:-Your-Guide-to-Free,-Private,-and-Powerful-AI-Creation/1976108134119305216
+5.	NVIDIA NIM for Developers, accessed on December 15, 2025, https://developer.nvidia.com/nim
+6.	Stable Diffusion XL NIM - NGC Catalog - NVIDIA, accessed on December 15, 2025, https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nim/collections/stable-diffusion-xl
+7.	TensorRT Boosts Stable Diffusion 3.5 on RTX GPUs - NVIDIA Blog, accessed on December 15, 2025, https://blogs.nvidia.com/blog/rtx-ai-garage-gtc-paris-tensorrt-rtx-nim-microservices/
+8.	JSON prompting for LLMs - IBM Developer, accessed on December 15, 2025, https://developer.ibm.com/articles/json-prompting-llms/
+9.	JSON Prompting for LLMs: A Practical Guide with Python Coding Examples - MarkTechPost, accessed on December 15, 2025, https://www.marktechpost.com/2025/08/23/json-prompting-for-llms-a-practical-guide-with-python-coding-examples/
+10.	Generate Storyboard JSON - AI Prompt - DocsBot AI, accessed on December 15, 2025, https://docsbot.ai/prompts/creative/generate-storyboard-json
+11.	Utilizing Longer Context than Speech Bubbles in Automated Manga Translation, accessed on December 15, 2025, https://aclanthology.org/2024.lrec-main.1505/
+12.	Stable Diffusion — Part 4: Style Without Training — How IP-Adapter Adds You to the Picture, accessed on December 15, 2025, https://shree6791.medium.com/part-4-style-without-training-how-ip-adapter-adds-you-to-the-picture-836c9355b085
+13.	ComfyUI IPAdapter First Attempt for Consistent Images - Extra Ordinary, the Series, accessed on December 15, 2025, https://extra-ordinary.tv/2025/08/02/comfyui-ipadapter-first-attempt-for-consistent-images/
+14.	So... how do you create consistent characters without using LORA... cuz you don't have consistent characters to create the LORA in the first place ?? : r/StableDiffusion - Reddit, accessed on December 15, 2025, https://www.reddit.com/r/StableDiffusion/comments/191eot3/so_how_do_you_create_consistent_characters/
+15.	Does IPAdapter create consistent characters? : r/comfyui - Reddit, accessed on December 15, 2025, https://www.reddit.com/r/comfyui/comments/1id3ter/does_ipadapter_create_consistent_characters/
+16.	What's your go-to method for easy, consistent character likeness with SDXL models? : r/StableDiffusion - Reddit, accessed on December 15, 2025, https://www.reddit.com/r/StableDiffusion/comments/1kfflss/whats_your_goto_method_for_easy_consistent/
+17.	How to Use ComfyUI API with Python: A Complete Guide | by Shawn Wong | Medium, accessed on December 15, 2025, https://medium.com/@next.trail.tech/how-to-use-comfyui-api-with-python-a-complete-guide-f786da157d37
+18.	Z-Image ComfyUI Workflow Example, accessed on December 15, 2025, https://docs.comfy.org/tutorials/image/z-image/z-image-turbo
+19.	bmad4ever/comfyui_panels: Comics/Manga like panel layouts. - GitHub, accessed on December 15, 2025, https://github.com/bmad4ever/comfyui_panels
+20.	Manga Creation Tutorial : r/comfyui - Reddit, accessed on December 15, 2025, https://www.reddit.com/r/comfyui/comments/1clxiu5/manga_creation_tutorial/
+21.	artificialguybr/LineAniRedmond-LinearMangaSDXL - Hugging Face, accessed on December 15, 2025, https://huggingface.co/artificialguybr/LineAniRedmond-LinearMangaSDXL
+22.	Line Art Style [SDXL Pony] - V1 | Stable Diffusion XL LoRA | Civitai, accessed on December 15, 2025, https://civitai.com/models/596934/line-art-style-sdxl-pony
+23.	BlendScreentone - RunComfy, accessed on December 15, 2025, https://www.runcomfy.com/comfyui-nodes/sketch2manga/BlendScreentone
+24.	andreyryabtsev/comfyui-python-api: Utilities library for working with the ComfyUI API, accessed on December 15, 2025, https://github.com/andreyryabtsev/comfyui-python-api
+25.	ComfyUI/script_examples/websockets_api_example.py at master - GitHub, accessed on December 15, 2025, https://github.com/comfyanonymous/ComfyUI/blob/master/script_examples/websockets_api_example.py
+26.	Detecting comic strip dialogue bubble regions in images - Stack Overflow, accessed on December 15, 2025, https://stackoverflow.com/questions/34356635/detecting-comic-strip-dialogue-bubble-regions-in-images
+27.	textwrap — Text wrapping and filling — Python 3.14.2 documentation, accessed on December 15, 2025, https://docs.python.org/3/library/textwrap.html
+28.	Python Tutorial: Wrapping Text Inside Image | by Prateek Joshi - Medium, accessed on December 15, 2025, https://prateekjoshi.medium.com/python-tutorial-wrapping-text-inside-image-adfbe6faf8b9
+29.	trehansiddharth/fit: Python library for fitting shapes to data points - GitHub, accessed on December 15, 2025, https://github.com/trehansiddharth/fit
+30.	Read geometries—ArcGIS Pro | Documentation, accessed on December 15, 2025, https://pro.arcgis.com/en/pro-app/3.4/arcpy/get-started/reading-geometries.htm
+31.	Manga2Anime(based on SDXL) | ComfyUI Workflow - OpenArt, accessed on December 15, 2025, https://openart.ai/workflows/o00oililil/manga2animebased-on-sdxl/pg5CswTCQHPDrUyGjP8T
+32.	Dashtoon: Building the YouTube of Comics in a Trillion-Dollar Entertainment Market, accessed on December 15, 2025, https://saasboomi.org/saas/ai/dashtoon-trillion-dollar-entertainment-market/

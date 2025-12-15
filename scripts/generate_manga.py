@@ -57,6 +57,7 @@ class MangaGenerator:
         # Import generation modules
         from scripts.generate_panels_api import PollinationsGenerator, NVIDIAImageGenerator
         from src.dialogue.smart_bubbles import SmartBubblePlacer
+        from src.ai.character_dna import CharacterDNAManager
         
         # Choose image generator based on provider
         if config.image_provider == "nvidia":
@@ -71,6 +72,10 @@ class MangaGenerator:
         else:
             print(f"📦 Using Pollinations.ai (parallel mode)")
             self.image_generator = PollinationsGenerator(str(self.output_dir))
+        
+        # Character DNA Manager for visual consistency
+        self.character_dna = CharacterDNAManager(style=config.style)
+        print(f"🧬 Character DNA Manager initialized ({config.style})")
         
         self.bubble_placer = SmartBubblePlacer()
         
@@ -132,6 +137,10 @@ class MangaGenerator:
                 style=self.config.style,
                 is_complete_story=self.config.is_complete_story
             )
+            
+            # Register characters with Character DNA Manager
+            print("\n🧬 Building Character DNA for visual consistency...")
+            self.character_dna.register_characters_from_plan(chapter_plan)
         else:
             # Fallback to Groq (simpler planning)
             print("\n⚡ Using Groq for scene generation (set GEMINI_API_KEY for better results)...")
@@ -155,17 +164,17 @@ class MangaGenerator:
             # Generate panel images
             panel_paths = self._generate_page_panels(page_data, page_num, progress_callback)
             
-            # Add dialogue
+            # Extract dialogue data (no rendering - just JSON)
             if progress_callback:
-                progress_callback(f"Adding dialogue to page {page_num}...", -1, {"event": "step_started", "step": "dialogue"})
+                progress_callback(f"Extracting dialogue for page {page_num}...", -1, {"event": "step_started", "step": "dialogue"})
             
-            bubble_paths = self._add_dialogue(panel_paths, page_data, page_num)
+            panel_paths, dialogue_data = self._add_dialogue(panel_paths, page_data, page_num)
             
-            # Compose page
+            # Compose page (panels only, no dialogue bubbles)
             if progress_callback:
                 progress_callback(f"Composing page {page_num}...", -1, {"event": "step_started", "step": "composition"})
             page_path = self._compose_page(
-                bubble_paths,
+                panel_paths,
                 page_num,
                 self.config.title
             )
@@ -177,7 +186,8 @@ class MangaGenerator:
                     "event": "page_complete",
                     "page_num": page_num,
                     "image_path": str(page_path),
-                    "panels": [str(p) for p in panel_paths]
+                    "panels": [str(p) for p in panel_paths],
+                    "dialogue": dialogue_data  # NEW: Include dialogue JSON
                 }
                 progress_callback(f"Finished page {page_num}...", current_prog, data)
             
@@ -185,7 +195,8 @@ class MangaGenerator:
                 'page_number': page_num,
                 'summary': page_data.get('page_summary', ''),
                 'panels': panel_paths,
-                'page_image': page_path
+                'page_image': page_path,
+                'dialogue': dialogue_data  # NEW: Store for canvas editor
             })
         
         # Step 3: Create PDF
@@ -258,19 +269,13 @@ class MangaGenerator:
             # Build detailed prompt
             description = panel.get('description', '')
             shot_type = panel.get('shot_type', 'medium')
+            characters_present = panel.get('characters_present', [])
             
-            # Add character details from the plan
-            char_details = []
-            for char_name in panel.get('characters_present', []):
-                if char_name in characters:
-                    char_details.append(characters[char_name].get('appearance', ''))
-            
-            prompt_parts = [
-                f"{shot_type} shot",
-                description,
-                ", ".join(char_details) if char_details else ""
-            ]
-            prompt = ", ".join(p for p in prompt_parts if p)
+            # Use Character DNA to enhance prompt with visual consistency tags
+            prompt = self.character_dna.enhance_panel_prompt(
+                base_prompt=f"{shot_type} shot, {description}",
+                characters_present=characters_present
+            )
             
             print(f"   Panel {i}: {description[:40]}...")
             
@@ -299,34 +304,36 @@ class MangaGenerator:
         
         return generated_files
     
-    def _add_dialogue(self, panel_paths: List[str], page_data: Dict, page_num: int) -> List[str]:
-        """Add dialogue bubbles to panels."""
+    def _add_dialogue(self, panel_paths: List[str], page_data: Dict, page_num: int) -> tuple[List[str], List[Dict]]:
+        """
+        Extract dialogue data WITHOUT rendering bubbles.
         
-        print(f"\n💬 Adding dialogue to page {page_num}...")
+        Returns:
+            tuple: (panel_paths_unchanged, dialogue_data_per_panel)
+        """
+        
+        print(f"\n💬 Extracting dialogue data for page {page_num}...")
         
         panels = page_data.get('panels', [])
-        output_files = []
+        dialogue_per_panel = []
         
-        for i, (panel_path, panel_data) in enumerate(zip(panel_paths, panels), 1):
+        for i, panel_data in enumerate(panels, 1):
             dialogues = panel_data.get('dialogue', [])
             
-            if dialogues and os.path.exists(panel_path):
-                output_path = panel_path.replace('.png', '_bubbles.png')
-                try:
-                    self.bubble_placer.place_dialogue(
-                        panel_path,
-                        dialogues,
-                        output_path
-                    )
-                    output_files.append(output_path)
-                    print(f"   ✅ Added {len(dialogues)} bubble(s) to panel {i}")
-                except Exception as e:
-                    print(f"   ⚠️ Bubble error: {e}")
-                    output_files.append(panel_path)
+            if dialogues:
+                print(f"   📝 Panel {i}: {len(dialogues)} dialogue(s)")
+                dialogue_per_panel.append({
+                    'panel_index': i - 1,
+                    'dialogues': dialogues
+                })
             else:
-                output_files.append(panel_path)
+                dialogue_per_panel.append({
+                    'panel_index': i - 1,
+                    'dialogues': []
+                })
         
-        return output_files
+        print(f"   ℹ️  Dialogue will be composited in canvas editor")
+        return panel_paths, dialogue_per_panel
     
     def _compose_page(self, panel_paths: List[str], page_num: int, title: str) -> str:
         """Compose panels into a single manga page."""
