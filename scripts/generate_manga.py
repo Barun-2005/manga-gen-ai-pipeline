@@ -266,14 +266,20 @@ class MangaGenerator:
             panel_id = f"p{page_num:02d}_panel_{i:02d}"
             filename = f"{panel_id}.png"
             
-            # Build detailed prompt
+            # Build enhanced prompt with cinematography parameters
             description = panel.get('description', '')
-            shot_type = panel.get('shot_type', 'medium')
+            shot_type = panel.get('shot_type', 'medium shot')
+            camera_angle = panel.get('camera_angle', 'straight-on')
+            composition = panel.get('composition', 'rule of thirds')
+            lighting_mood = panel.get('lighting_mood', 'soft lighting')
             characters_present = panel.get('characters_present', [])
+            
+            # Construct base visual prompt with cinematography
+            cinematography = f"{shot_type}, {camera_angle}, {composition}, {lighting_mood}"
             
             # Use Character DNA to enhance prompt with visual consistency tags
             prompt = self.character_dna.enhance_panel_prompt(
-                base_prompt=f"{shot_type} shot, {description}",
+                base_prompt=f"{cinematography}, {description}",
                 characters_present=characters_present
             )
             

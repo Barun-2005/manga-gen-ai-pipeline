@@ -133,12 +133,27 @@ FULL CHAPTER ({page_count} pages, {total_panels} panels): Complete story arc pos
 
 3. **DESIGN EACH PANEL**: For every panel, provide:
    - Panel number (1 to {total_panels})
-   - Shot type: wide, medium, close-up, or extreme-close-up
-   - Visual description: DETAILED scene for image generation (lighting, poses, expressions, background)
-   - Characters present
+   - **Camera shot**: Choose ONE: wide shot | medium shot | close-up | extreme close-up | over-the-shoulder | bird's eye view | worm's eye view
+   - **Camera angle**: Choose ONE: straight-on | dutch angle (tilted) | low angle (looking up) | high angle (looking down)
+   - **Composition**: Choose ONE: rule of thirds | center frame | dynamic diagonal | symmetrical
+   - **Lighting/Mood**: dramatic shadows | soft lighting | harsh contrast | backlit | rim light | moody | bright
+   - **Visual description**: Use COMMA-SEPARATED TAGS for image generation, NOT prose sentences!
+     * Format: "character action, environment detail, mood/atmosphere, visual style tags"
+     * Example GOOD: "Akira running through alley, neon signs, rain, motion blur, dramatic shadows{', grayscale, screentone' if style == 'bw_manga' else ', vibrant colors, cel shading'}"
+     * Example BAD: "Akira is running through a dark alley while it's raining"
+   - Characters present: List character names
    - Dialogue: MEANINGFUL lines that tell the story (max 2 speech bubbles per panel)
 
-4. **DIALOGUE RULES**:
+4. **VISUAL DESCRIPTION RULES**:
+   - **USE TAGS, NOT SENTENCES**: Comma-separated keywords only
+   - **Always include style tags**: {'"manga style, monochrome, ink lineart, screentone, high contrast"' if style == 'bw_manga' else '"anime style, vibrant colors, cel shading, studio quality"'}
+   - **Include camera info**: Start with shot type + angle (e.g., "close-up, dutch angle")
+   - **Add mood/lighting**: "dramatic shadows", "rim light", "moody atmosphere", etc.
+   - **Specify action clearly**: "character running", "character shocked expression", "character reaching out"
+   - **Include environment**: "urban alley", "rooftop at sunset", "classroom interior", etc.
+   - **Avoid THESE in descriptions**: text, dialogue bubbles, watermarks (those go in negative prompts)
+
+5. **DIALOGUE RULES**:
    - Dialogue should tell the story - a reader should understand the plot from dialogue alone
    - Keep lines SHORT (max 15 words)
    - Vary styles: speech, thought, shout, whisper
@@ -165,8 +180,11 @@ FULL CHAPTER ({page_count} pages, {total_panels} panels): Complete story arc pos
       "panels": [
         {{
           "panel_number": 1,
-          "shot_type": "wide|medium|close-up|extreme-close-up",
-          "description": "Detailed visual description for image AI",
+          "shot_type": "wide shot|medium shot|close-up|extreme close-up|over-the-shoulder|bird's eye|worm's eye",
+          "camera_angle": "straight-on|dutch angle|low angle|high angle",
+          "composition": "rule of thirds|center frame|dynamic diagonal|symmetrical",
+          "lighting_mood": "dramatic shadows|soft lighting|harsh contrast|backlit|rim light|moody|bright",
+          "description": "COMMA-SEPARATED TAGS (not prose!), character action, environment, mood, style tags",
           "characters_present": ["Character Name"],
           "dialogue": [
             {{"character": "Name", "text": "What they say", "style": "speech|thought|shout|whisper"}}
