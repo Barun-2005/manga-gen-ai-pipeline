@@ -189,12 +189,13 @@ class PollinationsGenerator:
     - Fallback images for failed generations
     """
     
-    # Prompt variations for retries
+    # Prompt variations for retries - Manga/Anime quality boosters
     PROMPT_VARIATIONS = [
-        "",  # Original
-        "masterpiece, best quality, ",
-        "highly detailed anime, ",
-        "professional anime art, studio quality, ",
+        "",  # Original prompt
+        "masterpiece, best quality, highly detailed, ",
+        "professional manga art, sharp linework, crisp details, ",
+        "masterwork, perfect composition, dynamic framing, ",
+        "high quality illustration, studio production, clean art, ",
     ]
     
     # Fallback images by scene type
@@ -267,9 +268,26 @@ class PollinationsGenerator:
             if attempt > 0:
                 time.sleep(random.uniform(1.0, 3.0))
 
+            # Negative prompts to avoid common AI artifacts
+            negative_prompt = (
+                "text, watermark, signature, logo, username, artist name, "
+                "blurry, low quality, jpeg artifacts, ugly, deformed, "
+                "3d render, cgi, realistic photo, extra limbs, bad anatomy, "
+                "duplicate, cropped, out of frame, mutation, distorted"
+            )
+            if style == "bw_manga":
+                # Additional negatives for B/W manga
+                negative_prompt += ", color, colored, vibrant, rainbow, pastel, saturated"
+            
+            encoded_negative = urllib.parse.quote(negative_prompt)
+
             # Add random tracking ID to bypass simple URL caching
             tracking = random.randint(10000, 99999)
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&seed={attempt_seed}&_fail_check={tracking}"
+            url = (
+                f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                f"?width={width}&height={height}&nologo=true&seed={attempt_seed}"
+                f"&negative={encoded_negative}&_fail_check={tracking}"
+            )
             
             try:
                 response = requests.get(url, headers=headers, timeout=timeout)
