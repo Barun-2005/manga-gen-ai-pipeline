@@ -60,6 +60,12 @@ class GenerateRequest(BaseModel):
     characters: Optional[List[CharacterInput]] = None
 
 
+class RegenerateRequest(BaseModel):
+    page: int
+    panel: int
+    prompt_override: Optional[str] = None
+
+
 class StepStatus(BaseModel):
     """Status of a generation step."""
     name: str
