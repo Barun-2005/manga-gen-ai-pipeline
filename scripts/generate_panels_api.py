@@ -228,16 +228,25 @@ class PollinationsGenerator:
     ) -> Optional[str]:
         """Generate a single image with retry logic and prompt variations."""
         
-        # Build style prefix based on manga style
+        # ADVANCED QUALITY BOOSTERS - Weighted emphasis
+        quality_core = "(masterpiece:1.3), (best quality:1.3), (ultra detailed:1.2)"
+        
         if style == "bw_manga":
-            # Strong B/W instructions to avoid any colors
+            # Professional B/W manga with weighted quality
             style_prefix = (
-                "black and white manga art, monochrome only, NO COLOR, "
-                "grayscale, high contrast ink drawing, detailed linework, "
-                "traditional manga style, screentone shading, NO colored hair, NO color at all"
+                f"{quality_core}, "
+                "(black and white manga:1.4), (monochrome:1.3), (high contrast ink:1.2), "
+                "(professional linework:1.2), (detailed screentone:1.1), (sharp lines:1.1), "
+                "NO COLOR, grayscale only, traditional manga, ink drawing"
             )
         else:  # color_anime
-            style_prefix = "anime style, vibrant colors, cel shaded, studio ghibli inspired"
+            # Professional color anime with weighted quality
+            style_prefix = (
+                f"{quality_core}, "
+                "(anime masterpiece:1.3), (studio quality:1.2), (vibrant colors:1.2), "
+                "(professional anime:1.2), (cel shaded:1.1), (clean linework:1.1), "
+                "colorful, vivid, detailed, official art"
+            )
         
         # Retry with different prompt variations
         for attempt in range(max_retries):
@@ -268,17 +277,55 @@ class PollinationsGenerator:
             if attempt > 0:
                 time.sleep(random.uniform(1.0, 3.0))
 
-            # Negative prompts to avoid common AI artifacts
-            negative_prompt = (
-                "text, watermark, signature, logo, username, artist name, "
-                "blurry, low quality, jpeg artifacts, ugly, deformed, "
-                "3d render, cgi, realistic photo, extra limbs, bad anatomy, "
-                "duplicate, cropped, out of frame, mutation, distorted"
-            )
-            if style == "bw_manga":
-                # Additional negatives for B/W manga
-                negative_prompt += ", color, colored, vibrant, rainbow, pastel, saturated"
+            # ADVANCED NEGATIVE PROMPTS - Professional Quality Control (50+ terms)
+            negative_terms = [
+                # Text and watermarks
+                "text", "watermark", "signature", "logo", "username", "artist name",
+                "copyright", "title", "subtitle", "caption", "label", "stamp",
+                
+                # Quality degradation
+                "blurry", "low quality", "worst quality", "jpeg artifacts", 
+                "compression artifacts", "pixelated", "low resolution", "lowres",
+                "grainy", "noise", "artifacts", "distorted", "malformed",
+                
+                # Anatomical errors (common AI failures)
+                "extra limbs", "extra fingers", "extra hands", "extra arms", "extra legs",
+                "missing limbs", "missing fingers", "fused fingers", "mutated hands",
+                "poorly drawn hands", "poorly drawn face", "mutation", "deformed",
+                "bad anatomy", "bad proportions", "disfigured", "anatomical nonsense",
+                "extra heads", "two faces", "multiple heads",
+                
+                # Visual style errors  
+                "3d render", "3d", "cgi", "unreal engine", "photorealistic",
+                "realistic photo", "photograph", "real life", "hyper realistic",
+                
+                # Composition and cropping issues
+                "cropped", "cut off", "out of frame", "body out of frame",
+                "poorly framed", "tilted", "off-center",
+                
+                # Unwanted elements
+                "duplicate", "cloned", "gross proportions", "long neck",
+                "ugly", "morbid", "mutilated", "disgusting", "((duplicate))",
+                
+                # Frame and border issues
+                "frame", "border", "multiple views", "split screen"
+            ]
             
+            # Style-specific negative additions
+            if style == "bw_manga":
+                negative_terms.extend([
+                    # Color-related (critical for B/W)
+                    "color", "colored", "colorful", "vibrant", "rainbow", "pastel",
+                    "saturated", "neon", "bright colors", "multicolored", 
+                    "vivid colors", "chromatic", "hue", "tint"
+                ])
+            else:  # color_anime
+                negative_terms.extend([
+                    # B/W when we want color
+                    "monochrome", "black and white", "grayscale", "greyscale"
+                ])
+            
+            negative_prompt = ", ".join(negative_terms)
             encoded_negative = urllib.parse.quote(negative_prompt)
 
             # Add random tracking ID to bypass simple URL caching
