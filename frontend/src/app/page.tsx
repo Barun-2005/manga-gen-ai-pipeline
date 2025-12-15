@@ -10,81 +10,143 @@ const HERO_PROMPTS = [
   "cyberpunk samurai, neon city, rain, reflections, dramatic",
   "dragon knight battle, flames, epic fantasy, dramatic lighting",
   "mysterious anime character, moonlight, dramatic shadows",
+  "ninja in action, smoke effects, dynamic movement, night",
+  "mecha pilot, cockpit, intense expression, sci-fi battle",
+  "witch casting spell, magical particles, forest, mystical",
 ];
 
-// Generate Pollinations URL with cache-busting
-const getPollinationsUrl = (prompt: string, seed?: number, bustCache?: number) => {
-  const fullPrompt = `anime style, high quality, masterpiece, ${prompt}`;
+// Style variations to make each image unique
+const STYLE_VARIATIONS = [
+  "soft glow lighting, ethereal atmosphere",
+  "hard shadows, cinematic contrast",
+  "vibrant colors, dynamic composition",
+  "moody atmosphere, muted tones",
+  "golden hour lighting, warm tones",
+  "cool blue tones, mysterious vibe",
+  "high contrast, dramatic shadows",
+  "pastel colors, dreamy aesthetic",
+  "neon accents, cyberpunk style",
+  "traditional ink style, high detail",
+];
+
+// Generate Pollinations URL - 768x768 (Safe middle ground)
+const getPollinationsUrl = (prompt: string, seed?: number, attempt: number = 0) => {
+  // Deterministically pick a style based on the seed
+  const styleIndex = seed ? seed % STYLE_VARIATIONS.length : 0;
+  const style = STYLE_VARIATIONS[styleIndex];
+
+  const fullPrompt = `anime style, high quality, masterpiece, ${prompt}, ${style}`;
   const encodedPrompt = encodeURIComponent(fullPrompt);
-  const seedParam = seed ? `&seed=${seed}` : "";
-  const cacheParam = bustCache ? `&t=${bustCache}` : "";
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true${seedParam}${cacheParam}`;
+  // Change seed slightly on retry to bust cache/errors
+  const finalSeed = seed ? seed + attempt : "";
+  const seedParam = finalSeed ? `&seed=${finalSeed}` : "";
+
+  // 768x768 is safer for bandwidth/limits than 1024
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=768&nologo=true${seedParam}`;
 };
 
 // Gallery showcase images with different styles
+// Each has a local anime fallback (guaranteed to work, instant load)
 const galleryItems = [
-  { title: "Samurai Warrior", prompt: "samurai warrior silhouette, sunset, cherry blossoms, dramatic lighting", genre: "Action" },
-  { title: "Neon City", prompt: "cyberpunk girl, neon city, rain, reflections, night scene", genre: "Sci-Fi" },
-  { title: "Dragon Knight", prompt: "knight facing dragon, epic battle, flames, fantasy castle", genre: "Fantasy" },
-  { title: "School Days", prompt: "anime schoolgirl, sakura trees, spring, peaceful", genre: "Slice of Life" },
-  { title: "Dark Forest", prompt: "mysterious figure, dark forest, glowing eyes, horror atmosphere", genre: "Horror" },
-  { title: "First Love", prompt: "anime couple, umbrella, rain, romantic city lights", genre: "Romance" },
+  { title: "Samurai Warrior", prompt: "samurai warrior silhouette, sunset, cherry blossoms, dramatic lighting", genre: "Action", fallback: "/placeholder-1.png" },
+  { title: "Neon City", prompt: "cyberpunk girl, neon city, rain, reflections, night scene", genre: "Sci-Fi", fallback: "/placeholder-2.png" },
+  { title: "Dragon Knight", prompt: "knight facing dragon, epic battle, flames, fantasy castle", genre: "Fantasy", fallback: "/placeholder-1.png" },
+  { title: "School Days", prompt: "anime schoolgirl, sakura trees, spring, peaceful", genre: "Slice of Life", fallback: "/placeholder-2.png" },
+  { title: "Dark Forest", prompt: "mysterious figure, dark forest, glowing eyes, horror atmosphere", genre: "Horror", fallback: "/placeholder-1.png" },
+  { title: "First Love", prompt: "anime couple, umbrella, rain, romantic city lights", genre: "Romance", fallback: "/placeholder-2.png" },
+  { title: "Space Explorer", prompt: "astronaut anime character, space station, stars, sci-fi", genre: "Sci-Fi", fallback: "/placeholder-1.png" },
+  { title: "Sword Master", prompt: "swordsman, mountain dojo, sunrise, training stance", genre: "Action", fallback: "/placeholder-2.png" },
 ];
 
-// Image component with loading state and error handling
+// Image component with loading state, error handling, and SMART RETRY
 const DynamicImage = ({
   src,
   alt,
   className,
-  fallbackSrc = "/hero-placeholder.png"
+  fallbackSrc = "/hero-placeholder.png",
+  onLoadComplete,
+  maxRetries = 3
 }: {
   src: string;
   alt: string;
   className?: string;
   fallbackSrc?: string;
+  onLoadComplete?: () => void;
+  maxRetries?: number;
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [currentSrc, setCurrentSrc] = useState(src);
 
   useEffect(() => {
     setIsLoaded(false);
     setHasError(false);
+    setRetryCount(0);
+    setCurrentSrc(src);
   }, [src]);
+
+  const handleRetry = () => {
+    if (retryCount < maxRetries) {
+      console.log(`Retrying image ${alt} (${retryCount + 1}/${maxRetries})...`);
+      setRetryCount(prev => prev + 1);
+      // Add a timestamp to force browser to re-fetch
+      setCurrentSrc(`${src}&retry=${Date.now()}`);
+    } else {
+      setHasError(true);
+      setIsLoaded(true);
+    }
+  };
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      {/* Static Placeholder (Visible until main image loads) */}
+      {/* Static Placeholder */}
       <img
         src={fallbackSrc}
         alt="Placeholder"
         className="absolute inset-0 w-full h-full object-cover"
       />
 
-      {/* Main Image (Fades in) */}
+      {/* Main Image */}
       <img
-        src={hasError ? fallbackSrc : src}
+        src={hasError ? fallbackSrc : currentSrc}
         alt={alt}
         className={`relative z-10 w-full h-full object-cover transition-opacity duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        onLoad={() => setIsLoaded(true)}
-        onError={() => setHasError(true)}
+        onLoad={() => { setIsLoaded(true); onLoadComplete?.(); }}
+        onError={(e) => {
+          console.error(`DynamicImage failed for ${currentSrc}:`, e);
+          // Try to retry before showing error
+          setTimeout(handleRetry, 2000 * (retryCount + 1)); // Backoff: 2s, 4s, 6s
+        }}
       />
+
 
       {/* Subtle overlay to blend placeholder during transition */}
       {!isLoaded && (
         <div className="absolute inset-0 bg-black/20 z-20 backdrop-blur-[2px] transition-opacity duration-700" />
+      )}
+
+      {/* Error Badge (Debug Indicator) */}
+      {hasError && (
+        <div className="absolute top-2 right-2 z-30 bg-red-500/80 backdrop-blur px-2 py-1 rounded text-[10px] font-bold text-white shadow-sm" title="Image generation failed, showing fallback">
+          FAILED
+        </div>
       )}
     </div>
   );
 };
 
 export default function Home() {
+  // Start with static values to prevent hydration mismatch (Server != Client)
   const [heroSeed, setHeroSeed] = useState(1);
   const [heroPromptIdx, setHeroPromptIdx] = useState(0);
-  const [galleryCacheBust, setGalleryCacheBust] = useState(0); // Start with 0, set on client
+  const [gallerySeed, setGallerySeed] = useState(0); // Static start
+  const [isClient, setIsClient] = useState(false); // Track client-side mount
 
-  // Set cache bust on mount (client-side only to avoid hydration mismatch)
+  // Initialize random seeds ONLY on client
   useEffect(() => {
-    setGalleryCacheBust(Date.now());
+    setIsClient(true);
+    setGallerySeed(Date.now()); // Randomize after mount
   }, []);
 
   // Rotate hero image periodically with different prompts
@@ -92,17 +154,26 @@ export default function Home() {
     const interval = setInterval(() => {
       setHeroSeed(prev => prev + 1);
       setHeroPromptIdx(prev => (prev + 1) % HERO_PROMPTS.length);
-    }, 30000); // Change every 30 seconds
+    }, 45000); // Change every 45 seconds
     return () => clearInterval(interval);
   }, []);
 
-  // Refresh gallery images periodically (every 60 seconds)
+  // Refresh gallery images periodically
   useEffect(() => {
+    // Only run on client after hydration
+    if (!isClient) return;
     const interval = setInterval(() => {
-      setGalleryCacheBust(Date.now());
-    }, 60000);
+      setGallerySeed(Date.now());
+    }, 90000); // Change every 90 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [isClient]);
+
+  // Generate unique seed per gallery item
+  const getGallerySeed = (index: number) => {
+    // If not client yet, return static seed to match server
+    if (!isClient) return 1000 + index;
+    return (gallerySeed % 10000) + index * 100;
+  };
 
   return (
     <div className="min-h-screen bg-[#0a110e]">
@@ -287,14 +358,15 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Masonry-style Grid */}
+          {/* Masonry-style Grid - Parallel Loading */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {galleryItems.map((item, index) => (
               <div key={index} className="relative group cursor-pointer rounded-xl overflow-hidden">
                 <DynamicImage
-                  src={getPollinationsUrl(item.prompt, index + 100, galleryCacheBust)}
+                  src={getPollinationsUrl(item.prompt, getGallerySeed(index))}
                   alt={item.title}
                   className="w-full aspect-[3/4] transition-transform duration-700 group-hover:scale-105"
+                  fallbackSrc={item.fallback}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-6">
                   <span className="text-[#38e07b] text-xs font-bold uppercase mb-1">{item.genre}</span>

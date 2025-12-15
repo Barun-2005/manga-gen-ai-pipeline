@@ -19,8 +19,6 @@ frontend/node_modules/
 # Outputs
 outputs/
 *.pdf
-*.png
-*.jpg
 temp/
 logs/
 
@@ -33,5 +31,8 @@ logs/
 .agent/
 brain/
 
-# Archive
-archive/legacy/
+# Reference materials (keep local, not in repo)
+archive/
+stitch_ui/
+docs/
+*.docx

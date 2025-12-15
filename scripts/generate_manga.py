@@ -25,6 +25,7 @@ class MangaConfig:
     layout: str = "2x2"  # "2x2" (4 panels), "2x3" (6 panels)
     pages: int = 1
     output_dir: str = "outputs"
+    image_provider: str = "pollinations"  # "pollinations" or "nvidia"
     is_complete_story: bool = False  # If True, wrap up story. If False, leave for continuation.
     
     @property
@@ -54,10 +55,23 @@ class MangaGenerator:
         self.output_dir.mkdir(exist_ok=True, parents=True)
         
         # Import generation modules
-        from scripts.generate_panels_api import PollinationsGenerator
+        from scripts.generate_panels_api import PollinationsGenerator, NVIDIAImageGenerator
         from src.dialogue.smart_bubbles import SmartBubblePlacer
         
-        self.image_generator = PollinationsGenerator(str(self.output_dir))
+        # Choose image generator based on provider
+        if config.image_provider == "nvidia":
+            import os
+            nvidia_key = os.environ.get("NVIDIA_IMAGE_API_KEY")
+            if nvidia_key:
+                print(f"📦 Using NVIDIA FLUX.1-dev (sequential mode)")
+                self.image_generator = NVIDIAImageGenerator(str(self.output_dir), api_key=nvidia_key)
+            else:
+                print(f"⚠️ NVIDIA_IMAGE_API_KEY not found, falling back to Pollinations")
+                self.image_generator = PollinationsGenerator(str(self.output_dir))
+        else:
+            print(f"📦 Using Pollinations.ai (parallel mode)")
+            self.image_generator = PollinationsGenerator(str(self.output_dir))
+        
         self.bubble_placer = SmartBubblePlacer()
         
         # Story Director (Gemini) - will be initialized when needed

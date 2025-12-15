@@ -1,9 +1,0 @@
-# Sample Prompts for Testing
-# These prompts are used for testing the pipeline functionality
-
-masterpiece, best quality, manga style, young ninja discovers ancient temple
-highly detailed, anime art, mysterious glowing crystal sword in stone altar
-black and white, dramatic lighting, ancient stone guardians awakening
-manga panel, action scene, ninja fighting temple guardians with sword
-detailed artwork, ninja wielding crystal sword with magical energy
-final panel, ninja standing victorious in temple with glowing weapon

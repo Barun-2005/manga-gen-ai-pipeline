@@ -18,6 +18,7 @@ export default function CreatePage() {
     const [style, setStyle] = useState<"bw_manga" | "color_anime">("bw_manga");
     const [layout, setLayout] = useState<"2x2" | "2x3" | "full">("2x2");
     const [pageCount, setPageCount] = useState(1);
+    const [imageProvider, setImageProvider] = useState<"pollinations" | "nvidia">("pollinations");
     const [characters, setCharacters] = useState<Character[]>([
         { id: "1", name: "Akira", role: "Protagonist", appearance: "Spiky blue hair, scar on left cheek. Stoic expression." }
     ]);
@@ -91,6 +92,7 @@ export default function CreatePage() {
                     style: style,
                     layout: layout,
                     pages: pageCount,
+                    image_provider: imageProvider,
                     characters: characters.map(c => ({
                         name: c.name,
                         appearance: c.appearance,
@@ -289,6 +291,55 @@ export default function CreatePage() {
                                         </div>
                                         <div className="absolute top-2 right-2 text-[#38e07b] opacity-0 peer-checked:opacity-100 transition-opacity">
                                             <span className="material-symbols-outlined filled">check_circle</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Image Provider Selection */}
+                        <div className="glass-panel rounded-xl p-5">
+                            <h3 className="text-white text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[#38e07b] text-[18px]">cloud</span> Image Generator
+                            </h3>
+                            <div className="grid grid-cols-1 gap-3">
+                                <label className="cursor-pointer relative group">
+                                    <input
+                                        type="radio"
+                                        name="provider"
+                                        checked={imageProvider === "pollinations"}
+                                        onChange={() => setImageProvider("pollinations")}
+                                        className="peer sr-only"
+                                    />
+                                    <div className="rounded-lg p-4 border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:bg-[#38e07b]/10 bg-black/20 transition-all">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-white font-bold">Pollinations.ai</p>
+                                                <p className="text-white/50 text-xs">Free • Parallel (4x faster) • No API key</p>
+                                            </div>
+                                            <div className="text-[#38e07b] opacity-0 peer-checked:opacity-100 transition-opacity">
+                                                <span className="material-symbols-outlined filled">check_circle</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </label>
+                                <label className="cursor-pointer relative group">
+                                    <input
+                                        type="radio"
+                                        name="provider"
+                                        checked={imageProvider === "nvidia"}
+                                        onChange={() => setImageProvider("nvidia")}
+                                        className="peer sr-only"
+                                    />
+                                    <div className="rounded-lg p-4 border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:bg-[#38e07b]/10 bg-black/20 transition-all">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-white font-bold">NVIDIA FLUX.1-dev</p>
+                                                <p className="text-white/50 text-xs">Premium • Sequential • API key required</p>
+                                            </div>
+                                            <div className="text-[#38e07b] opacity-0 peer-checked:opacity-100 transition-opacity">
+                                                <span className="material-symbols-outlined filled">check_circle</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </label>

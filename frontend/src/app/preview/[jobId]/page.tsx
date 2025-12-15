@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import DialogueLayer, { BubbleData } from "@/components/DialogueLayer";
 
 interface DialogueBubble {
     id: string;
@@ -59,8 +60,88 @@ export default function PreviewPage() {
     const [selectedBubble, setSelectedBubble] = useState<string | null>(null);
     const [editingText, setEditingText] = useState("");
     const [bubbleStyle, setBubbleStyle] = useState<string>("speech");
+    const [fontSize, setFontSize] = useState(14);
     const [regenerating, setRegenerating] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
+
+    // Dialogues state: Map of panelId -> BubbleData[]
+    const [panelDialogues, setPanelDialogues] = useState<Record<string, BubbleData[]>>({});
+
+    // Handle dialogue updates from the canvas
+    const handleDialoguesChange = (panelId: string, dialogues: BubbleData[]) => {
+        setPanelDialogues(prev => ({ ...prev, [panelId]: dialogues }));
+    };
+
+    // Get the currently selected bubble data
+    const getSelectedBubbleData = () => {
+        if (!selectedBubble || selectedPanel === null) return null;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        return dialogues.find(b => b.id === selectedBubble);
+    };
+
+    // Update selected bubble's style
+    const updateBubbleStyle = (newStyle: string) => {
+        if (!selectedBubble || selectedPanel === null) return;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        const updated = dialogues.map(b =>
+            b.id === selectedBubble ? { ...b, style: newStyle as BubbleData["style"] } : b
+        );
+        handleDialoguesChange(panelId, updated);
+        setBubbleStyle(newStyle);
+    };
+
+    // Update selected bubble's font size
+    const updateBubbleFontSize = (delta: number) => {
+        if (!selectedBubble || selectedPanel === null) return;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        const newSize = Math.max(8, Math.min(32, fontSize + delta));
+        const updated = dialogues.map(b =>
+            b.id === selectedBubble ? { ...b, fontSize: newSize } : b
+        );
+        handleDialoguesChange(panelId, updated);
+        setFontSize(newSize);
+    };
+
+    // Delete selected bubble
+    const deleteSelectedBubble = () => {
+        if (!selectedBubble || selectedPanel === null) return;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        const updated = dialogues.filter(b => b.id !== selectedBubble);
+        handleDialoguesChange(panelId, updated);
+        setSelectedBubble(null);
+    };
+
+    // Handle bubble selection from canvas (sync sidebar)
+    const handleBubbleSelection = (bubbleId: string | null) => {
+        setSelectedBubble(bubbleId);
+        if (bubbleId && selectedPanel !== null) {
+            const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+            const dialogues = panelDialogues[panelId] || [];
+            const bubble = dialogues.find(b => b.id === bubbleId);
+            if (bubble) {
+                setEditingText(bubble.text);
+                setBubbleStyle(bubble.style);
+                setFontSize(bubble.fontSize || 14);
+            }
+        }
+    };
+
+    // Parse layout to get grid dimensions (supports 2x2, 2x3, 3x3, etc)
+    const getGridDimensions = () => {
+        // Try to get layout from job, default to 2x2
+        const layout = (job?.result as { layout?: string })?.layout || "2x2";
+        const parts = layout.split("x");
+        return {
+            cols: parseInt(parts[0]) || 2,
+            rows: parseInt(parts[1]) || 2
+        };
+    };
+    const grid = getGridDimensions();
+    const totalPanels = grid.cols * grid.rows;
 
     useEffect(() => {
         if (!jobId) return;
@@ -82,6 +163,24 @@ export default function PreviewPage() {
         fetchJob();
     }, [jobId]);
 
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Delete selected bubble
+            if ((e.key === "Delete" || e.key === "Backspace") && selectedBubble) {
+                // Don't trigger if typing in an input
+                if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                    return;
+                }
+                e.preventDefault();
+                deleteSelectedBubble();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [selectedBubble, selectedPanel, currentPage, panelDialogues]);
+
     const downloadFile = (type: "pdf" | "png" | "zip") => {
         window.open(`http://localhost:8000/api/download/${jobId}/${type}`, "_blank");
         setShowExportMenu(false);
@@ -91,9 +190,32 @@ export default function PreviewPage() {
         if (selectedPanel === null) return;
         setRegenerating(true);
 
-        // TODO: Call regenerate API
-        await new Promise(r => setTimeout(r, 2000)); // Simulate
-        setRegenerating(false);
+        try {
+            const response = await fetch(`http://localhost:8000/api/regenerate/${jobId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    page: currentPage,
+                    panel: selectedPanel,
+                    prompt_override: editingText || undefined
+                })
+            });
+
+            if (response.ok) {
+                // Refresh job data to get new panel image
+                const jobResponse = await fetch(`http://localhost:8000/api/status/${jobId}`);
+                if (jobResponse.ok) {
+                    const data = await jobResponse.json();
+                    setJob(data);
+                }
+            } else {
+                console.error("Regeneration failed");
+            }
+        } catch (err) {
+            console.error("Regeneration error:", err);
+        } finally {
+            setRegenerating(false);
+        }
     };
 
     if (loading) {
@@ -217,8 +339,8 @@ export default function PreviewPage() {
                     </div>
                 </aside>
 
-                {/* Center Canvas */}
-                <section className="flex-1 bg-[#0c1610] relative flex items-center justify-center overflow-hidden">
+                {/* Center Canvas - Scrollable when zoomed */}
+                <section className="flex-1 bg-[#0c1610] relative overflow-auto p-8">
                     {/* Grid Background */}
                     <div
                         className="absolute inset-0 opacity-10 pointer-events-none"
@@ -228,52 +350,79 @@ export default function PreviewPage() {
                         }}
                     ></div>
 
-                    {/* Manga Page Container */}
-                    <div
-                        ref={canvasRef}
-                        className="relative bg-white shadow-2xl overflow-hidden transition-transform duration-300"
-                        style={{
-                            height: `${zoom}%`,
-                            aspectRatio: "2 / 3"
-                        }}
-                    >
-                        {currentPageData ? (
-                            <>
-                                <img
-                                    src={`http://localhost:8000/api/preview/${jobId}/${currentPage}`}
-                                    alt={`Page ${currentPage}`}
-                                    className="w-full h-full object-contain bg-white"
-                                />
+                    {/* Centering wrapper */}
+                    <div className="min-h-full flex items-center justify-center">
+                        {/* Manga Page Container */}
+                        <div
+                            ref={canvasRef}
+                            className="relative bg-white shadow-2xl overflow-visible transition-all duration-300 flex-shrink-0"
+                            style={{
+                                height: `${zoom}vh`,
+                                maxHeight: `${zoom}vh`,
+                                aspectRatio: "2 / 3"
+                            }}
+                        >
+                            {currentPageData ? (
+                                <>
+                                    <img
+                                        src={`http://localhost:8000/api/preview/${jobId}/${currentPage}`}
+                                        alt={`Page ${currentPage}`}
+                                        className="w-full h-full object-contain bg-white"
+                                    />
 
-                                {/* Interactive Panel Overlays (2x2 grid mockup) */}
-                                <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-1 p-1">
-                                    {[0, 1, 2, 3].map((idx) => (
-                                        <div
-                                            key={idx}
-                                            onClick={() => setSelectedPanel(selectedPanel === idx ? null : idx)}
-                                            className={`cursor-pointer rounded-sm transition-all ${selectedPanel === idx
-                                                ? "border-2 border-[#38e07b] bg-[#38e07b]/10 shadow-[0_0_15px_rgba(56,224,123,0.3)]"
-                                                : "border-2 border-transparent hover:border-[#38e07b]/50 hover:bg-[#38e07b]/5"
-                                                }`}
-                                        >
-                                            {selectedPanel !== idx && (
-                                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-[#38e07b] text-[#0a110e] text-xs font-bold px-2 py-1 rounded-full">
-                                                    Edit Panel
+                                    {/* Interactive Panel Overlays - Dynamic Grid */}
+                                    <div
+                                        className="absolute inset-0 grid gap-1 p-1"
+                                        style={{
+                                            gridTemplateColumns: `repeat(${grid.cols}, 1fr)`,
+                                            gridTemplateRows: `repeat(${grid.rows}, 1fr)`
+                                        }}
+                                    >
+                                        {Array.from({ length: totalPanels }).map((_, idx) => {
+                                            const panelId = `page-${currentPage}-panel-${idx}`;
+                                            const dialogues = panelDialogues[panelId] || [];
+
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => setSelectedPanel(selectedPanel === idx ? null : idx)}
+                                                    className={`cursor-pointer rounded-sm transition-all relative ${selectedPanel === idx
+                                                        ? "border-2 border-[#38e07b] bg-[#38e07b]/10 shadow-[0_0_15px_rgba(56,224,123,0.3)]"
+                                                        : "border-2 border-transparent hover:border-[#38e07b]/50 hover:bg-[#38e07b]/5"
+                                                        }`}
+                                                >
+                                                    {/* Panel selection badge */}
+                                                    {selectedPanel === idx && (
+                                                        <div className="absolute top-1 right-1 bg-[#38e07b] text-[#0a110e] text-xs font-bold px-2 py-0.5 rounded-full z-40">
+                                                            Panel {idx + 1}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Dialogue Layer - ALWAYS render, but only interactive when selected */}
+                                                    <DialogueLayer
+                                                        panelId={panelId}
+                                                        dialogues={dialogues}
+                                                        onDialoguesChange={handleDialoguesChange}
+                                                        containerRef={canvasRef}
+                                                        isActive={selectedPanel === idx}
+                                                        onBubbleSelect={handleBubbleSelection}
+                                                    />
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-[#16261e] text-white/30">
+                                    <span className="material-symbols-outlined text-6xl">image</span>
                                 </div>
-                            </>
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-[#16261e] text-white/30">
-                                <span className="material-symbols-outlined text-6xl">image</span>
-                            </div>
-                        )}
+                            )}
+                        </div>
+
                     </div>
 
-                    {/* Canvas Controls */}
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#0a110e]/90 backdrop-blur-md px-2 py-1.5 rounded-full border border-white/10 shadow-xl z-20">
+                    {/* Canvas Controls - Fixed at bottom of canvas area */}
+                    <div className="sticky bottom-6 left-1/2 -translate-x-1/2 w-fit mx-auto flex items-center gap-2 bg-[#0a110e]/90 backdrop-blur-md px-2 py-1.5 rounded-full border border-white/10 shadow-xl z-20">
                         <button
                             onClick={() => setZoom(Math.max(50, zoom - 10))}
                             className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10"
@@ -383,16 +532,24 @@ export default function PreviewPage() {
                                         <div className="space-y-2">
                                             <label className="text-xs font-semibold text-white/50 block">Size</label>
                                             <div className="flex items-center bg-[#16261e] border border-[#264532] rounded-lg overflow-hidden">
-                                                <button className="p-2 hover:bg-[#264532]">
+                                                <button
+                                                    onClick={() => updateBubbleFontSize(-2)}
+                                                    disabled={!selectedBubble}
+                                                    className="p-2 hover:bg-[#264532] disabled:opacity-50"
+                                                >
                                                     <span className="material-symbols-outlined text-xs text-white">remove</span>
                                                 </button>
                                                 <input
                                                     type="text"
-                                                    value="14"
+                                                    value={fontSize}
                                                     readOnly
                                                     className="w-full bg-transparent text-center text-xs text-white border-none p-0"
                                                 />
-                                                <button className="p-2 hover:bg-[#264532]">
+                                                <button
+                                                    onClick={() => updateBubbleFontSize(2)}
+                                                    disabled={!selectedBubble}
+                                                    className="p-2 hover:bg-[#264532] disabled:opacity-50"
+                                                >
                                                     <span className="material-symbols-outlined text-xs text-white">add</span>
                                                 </button>
                                             </div>
@@ -405,8 +562,9 @@ export default function PreviewPage() {
                                             {BUBBLE_STYLES.map((style) => (
                                                 <button
                                                     key={style.id}
-                                                    onClick={() => setBubbleStyle(style.id)}
-                                                    className={`aspect-square rounded-lg border-2 flex items-center justify-center transition-all ${bubbleStyle === style.id
+                                                    onClick={() => updateBubbleStyle(style.id)}
+                                                    disabled={!selectedBubble}
+                                                    className={`aspect-square rounded-lg border-2 flex items-center justify-center transition-all disabled:opacity-50 ${bubbleStyle === style.id
                                                         ? "border-[#38e07b] bg-[#38e07b]/10"
                                                         : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50"
                                                         }`}

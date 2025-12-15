@@ -11,7 +11,8 @@
   "dependencies": {
     "next": "16.0.10",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "react-draggable": "^4.5.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

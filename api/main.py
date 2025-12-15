@@ -56,6 +56,7 @@ class GenerateRequest(BaseModel):
     style: str = "color_anime"  # "color_anime" or "bw_manga"
     layout: str = "2x2"  # "2x2", "2x3", "3x3"
     pages: int = 1
+    image_provider: str = "pollinations"  # "pollinations" or "nvidia"
     characters: Optional[List[CharacterInput]] = None
 
 
@@ -278,14 +279,14 @@ async def get_page_preview(job_id: str, page_num: int):
 
 
 class RegenerateRequest(BaseModel):
-    panel_index: int
-    feedback: Optional[str] = None  # User feedback like "make character angrier"
-    use_llm: bool = True  # Let LLM adjust prompt based on feedback
+    page: int  # Page number (1-indexed)
+    panel: int  # Panel index (0-indexed)
+    prompt_override: Optional[str] = None  # Custom prompt or feedback
 
 
 @app.post("/api/regenerate/{job_id}")
-async def regenerate_panel(job_id: str, request: RegenerateRequest):
-    """Regenerate a single panel with optional user feedback."""
+async def regenerate_panel(job_id: str, request: RegenerateRequest, background_tasks: BackgroundTasks):
+    """Regenerate a single panel with optional custom prompt."""
     
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -294,16 +295,18 @@ async def regenerate_panel(job_id: str, request: RegenerateRequest):
     if job.status != "completed":
         raise HTTPException(status_code=400, detail="Generation must be complete first")
     
-    # TODO: Implement actual regeneration
-    # 1. Get original panel prompt
-    # 2. If feedback, use LLM to modify prompt
-    # 3. Generate new image
-    # 4. Update result
+    # Queue regeneration in background
+    background_tasks.add_task(
+        run_panel_regeneration,
+        job_id,
+        request.page,
+        request.panel,
+        request.prompt_override
+    )
     
-    # For now, return success placeholder
     return {
         "success": True,
-        "message": f"Panel {request.panel_index} queued for regeneration",
+        "message": f"Panel {request.panel + 1} on page {request.page} queued for regeneration",
         "job_id": job_id
     }
 
@@ -311,6 +314,45 @@ async def regenerate_panel(job_id: str, request: RegenerateRequest):
 # ============================================
 # Background Generation
 # ============================================
+
+def run_panel_regeneration(job_id: str, page: int, panel: int, prompt_override: Optional[str] = None):
+    """Regenerate a single panel in background."""
+    from scripts.generate_panels_api import PollinationsGenerator
+    import time
+    
+    job = jobs[job_id]
+    output_dir = Path("outputs") / job_id
+    
+    try:
+        # Get the original prompt if available, or use override
+        prompt = prompt_override or f"manga panel, anime style, high quality, detailed"
+        
+        # Generate new image
+        generator = PollinationsGenerator(output_dir=str(output_dir))
+        filename = f"regen_p{page}_panel{panel}_{int(time.time())}.png"
+        
+        result_path = generator.generate_image(
+            prompt=prompt,
+            filename=filename,
+            width=1024,
+            height=1024,
+            style="anime"
+        )
+        
+        if result_path:
+            # Update job result with new panel
+            if job.log_messages:
+                job.log_messages.append(f"> ✅ Regenerated panel {panel + 1} on page {page}")
+            
+            # Update panel_previews if it exists
+            if job.panel_previews:
+                global_idx = (page - 1) * 4 + panel  # TODO: Use actual layout
+                if global_idx < len(job.panel_previews):
+                    job.panel_previews[global_idx] = f"/outputs/{job_id}/{filename}"
+    except Exception as e:
+        if job.log_messages:
+            job.log_messages.append(f"> ❌ Regeneration failed: {str(e)}")
+
 
 def run_generation(job_id: str, request: GenerateRequest):
     """Run manga generation in background with detailed progress tracking."""
@@ -358,6 +400,7 @@ def run_generation(job_id: str, request: GenerateRequest):
             layout=request.layout,
             pages=request.pages,
             output_dir=str(OUTPUT_DIR / job_id),
+            image_provider=request.image_provider,
             is_complete_story=False  # Default to chapter mode
         )
         

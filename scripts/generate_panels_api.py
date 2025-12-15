@@ -9,9 +9,175 @@ import urllib.parse
 import os
 import time
 import json
+import random
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+import base64
+
+
+class NVIDIAImageGenerator:
+    """Generate images using NVIDIA NIM API (FLUX.1-dev from Black Forest Labs)
+    
+    Requires: NVIDIA_IMAGE_API_KEY environment variable
+    Rate limits: Sequential generation recommended
+    """
+    
+    # NVIDIA hosted FLUX.1-dev API URL
+    API_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev"
+    
+    def __init__(self, output_dir: str = "outputs", api_key: str = None):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
+        self.api_key = api_key or os.environ.get("NVIDIA_IMAGE_API_KEY")
+        
+        if not self.api_key:
+            raise ValueError("NVIDIA_IMAGE_API_KEY not found in environment")
+        
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+    
+    def generate_image(
+        self,
+        prompt: str,
+        filename: str,
+        width: int = 1024,
+        height: int = 1024,
+        style: str = "anime",
+        max_retries: int = 3,
+        seed: Optional[int] = None
+    ) -> Optional[str]:
+        """Generate a single image using NVIDIA FLUX.1-dev."""
+        
+        # Build style prefix
+        if style == "bw_manga":
+            style_prefix = "black and white manga, monochrome, ink drawing, high contrast"
+        else:
+            style_prefix = "anime style, vibrant colors, studio quality"
+        
+        full_prompt = f"{style_prefix}, {prompt}"
+        
+        # FLUX.1-dev API payload format
+        payload = {
+            "prompt": full_prompt,
+            "mode": "base",
+            "cfg_scale": 3.5,
+            "width": width,
+            "height": height,
+            "seed": seed if seed is not None else random.randint(0, 2147483647),
+            "steps": 50
+        }
+        
+        for attempt in range(max_retries):
+            try:
+                # Rate limit delay between requests
+                if attempt > 0:
+                    time.sleep(random.uniform(2.0, 4.0))
+                
+                print(f"   🔄 NVIDIA API call (attempt {attempt+1})...")
+                
+                response = requests.post(
+                    self.API_URL,
+                    headers=self.headers,
+                    json=payload,
+                    timeout=120
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # NVIDIA returns base64 in artifacts array
+                    artifacts = data.get("artifacts", [])
+                    if artifacts and len(artifacts) > 0:
+                        image_b64 = artifacts[0].get("base64")
+                        if image_b64:
+                            image_data = base64.b64decode(image_b64)
+                            filepath = self.output_dir / filename
+                            with open(filepath, "wb") as f:
+                                f.write(image_data)
+                            print(f"   ✅ NVIDIA image saved: {filename}")
+                            return str(filepath)
+                    
+                    print(f"   ⚠️ No image in NVIDIA response: {list(data.keys())}")
+                        
+                elif response.status_code == 429:
+                    wait_time = (2 ** attempt) + random.uniform(1.0, 3.0)
+                    print(f"   ⚠️ NVIDIA rate limit (429), waiting {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                    continue
+                elif response.status_code == 402:
+                    print(f"   ❌ NVIDIA credits exhausted (402)")
+                    return None
+                else:
+                    print(f"   ❌ NVIDIA error {response.status_code}: {response.text[:200]}")
+                    if attempt < max_retries - 1:
+                        time.sleep(3)
+                        continue
+                    return None
+                    
+            except requests.exceptions.Timeout:
+                print(f"   ⚠️ NVIDIA timeout, retry {attempt + 1}/{max_retries}...")
+                time.sleep(3)
+                continue
+            except Exception as e:
+                print(f"   ❌ NVIDIA error: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(3)
+                    continue
+                return None
+        
+        print(f"   ❌ NVIDIA failed after {max_retries} retries: {filename}")
+        return None
+    
+    def generate_single_panel(
+        self,
+        panel_info: dict,
+        characters: dict,
+        style: str,
+        panel_index: int
+    ) -> dict:
+        """Generate a single panel - SEQUENTIAL (rate-limit safe)."""
+        panel_num = f"{panel_index:02d}"
+        filename = f"panel_{panel_num}.png"
+        
+        description = panel_info.get("description", panel_info.get("visual_description", ""))
+        shot_type = panel_info.get("shot_type", "medium")
+        
+        char_details = []
+        for char_name in panel_info.get("characters_present", []):
+            if char_name in characters:
+                char = characters[char_name]
+                char_details.append(f"{char_name} ({char.get('appearance', '')})")
+        
+        prompt_parts = [
+            f"{shot_type} shot",
+            description,
+            ", ".join(char_details) if char_details else "",
+        ]
+        prompt = ", ".join(p for p in prompt_parts if p)
+        
+        print(f"   🎨 [NVIDIA] Panel {panel_index}: {description[:40]}...")
+        
+        result = self.generate_image(prompt, filename, style=style, seed=panel_index * 42)
+        
+        return {
+            "panel_index": panel_index,
+            "filename": filename,
+            "filepath": result,
+            "success": result is not None
+        }
+    
+    def generate_batch(self, panels: list, characters: dict, style: str) -> list:
+        """Generate panels SEQUENTIALLY (rate-limit safe)."""
+        results = []
+        for i, panel in enumerate(panels, 1):
+            result = self.generate_single_panel(panel, characters, style, i)
+            results.append(result)
+            # Small delay between panels to respect rate limits
+            time.sleep(1.5)
+        return results
 
 
 class PollinationsGenerator:
@@ -53,8 +219,8 @@ class PollinationsGenerator:
         self,
         prompt: str,
         filename: str,
-        width: int = 768,
-        height: int = 768,
+        width: int = 1024,
+        height: int = 1024,
         style: str = "anime",
         max_retries: int = 3,
         seed: Optional[int] = None
@@ -82,12 +248,31 @@ class PollinationsGenerator:
             
             # Add seed for consistency/variation
             attempt_seed = (seed or 42) + (attempt * 100)
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&seed={attempt_seed}"
+            
+            # User-Agent rotation to look like different browsers
+            user_agents = [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ]
+            headers = {
+                "User-Agent": random.choice(user_agents),
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://pollinations.ai/",
+            }
+
+            # Random jitter delay to avoid machine-like patterns
+            if attempt > 0:
+                time.sleep(random.uniform(1.0, 3.0))
+
+            # Add random tracking ID to bypass simple URL caching
+            tracking = random.randint(10000, 99999)
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&seed={attempt_seed}&_fail_check={tracking}"
             
             try:
-                # Increase timeout for retries
-                timeout = 60 + (attempt * 30)
-                response = requests.get(url, timeout=timeout)
+                response = requests.get(url, headers=headers, timeout=timeout)
                 
                 if response.status_code == 200:
                     filepath = self.output_dir / filename
@@ -95,19 +280,19 @@ class PollinationsGenerator:
                         f.write(response.content)
                     return str(filepath)
                 elif response.status_code == 429:
-                    # Too Many Requests - Exponential Backoff
-                    wait_time = (2 ** attempt) + 1  # 2s, 3s, 5s...
-                    print(f"   ⚠️ Rate limit (429), waiting {wait_time}s...")
+                    # Too Many Requests - Randomized Backoff
+                    wait_time = (2 ** attempt) + random.uniform(0.5, 2.0)
+                    print(f"   ⚠️ Rate limit (429), waiting {wait_time:.1f}s...")
                     time.sleep(wait_time)
                     continue
                 elif response.status_code == 502:
                     print(f"   ⚠️ Server error (502), retry {attempt + 1}/{max_retries}...")
-                    time.sleep(3 * (attempt + 1))
+                    time.sleep(random.uniform(2.0, 5.0))
                     continue
                 else:
                     print(f"   ❌ Error generating {filename}: {response.status_code}")
                     if attempt < max_retries - 1:
-                        time.sleep(3)
+                        time.sleep(random.uniform(1.0, 3.0))
                         continue
                     return None
                     
