@@ -277,52 +277,41 @@ class PollinationsGenerator:
             if attempt > 0:
                 time.sleep(random.uniform(1.0, 3.0))
 
-            # ADVANCED NEGATIVE PROMPTS - Professional Quality Control (50+ terms)
+            # OPTIMIZED NEGATIVE PROMPTS - High-impact terms only (token-efficient)
+            # Prioritized for Pollinations & SD models (CLIP ~77 token limit)
             negative_terms = [
-                # Text and watermarks
-                "text", "watermark", "signature", "logo", "username", "artist name",
-                "copyright", "title", "subtitle", "caption", "label", "stamp",
-                
-                # Quality degradation
-                "blurry", "low quality", "worst quality", "jpeg artifacts", 
-                "compression artifacts", "pixelated", "low resolution", "lowres",
-                "grainy", "noise", "artifacts", "distorted", "malformed",
+                # Critical quality killers (highest priority)
+                "worst quality", "low quality", "blurry", "bad anatomy", 
+                "ugly", "deformed", "disfigured", "mutation",
                 
                 # Anatomical errors (common AI failures)
-                "extra limbs", "extra fingers", "extra hands", "extra arms", "extra legs",
-                "missing limbs", "missing fingers", "fused fingers", "mutated hands",
-                "poorly drawn hands", "poorly drawn face", "mutation", "deformed",
-                "bad anatomy", "bad proportions", "disfigured", "anatomical nonsense",
-                "extra heads", "two faces", "multiple heads",
+                "extra limbs", "extra fingers", "poorly drawn hands", 
+                "poorly drawn face", "mutated hands", "fused fingers",
+                "bad proportions", 
                 
-                # Visual style errors  
-                "3d render", "3d", "cgi", "unreal engine", "photorealistic",
-                "realistic photo", "photograph", "real life", "hyper realistic",
+                # Text and watermarks
+                "text", "watermark", "signature", "username", "logo",
+                "copyright", "artist name",
                 
-                # Composition and cropping issues
-                "cropped", "cut off", "out of frame", "body out of frame",
-                "poorly framed", "tilted", "off-center",
+                # Style errors
+                "3d render", "cgi", "photorealistic", "realistic photo",
+                
+                # Artifacts and degradation  
+                "jpeg artifacts", "pixelated", "grainy", "artifacts",
+                "distorted", "cropped", "out of frame",
                 
                 # Unwanted elements
-                "duplicate", "cloned", "gross proportions", "long neck",
-                "ugly", "morbid", "mutilated", "disgusting", "((duplicate))",
-                
-                # Frame and border issues
-                "frame", "border", "multiple views", "split screen"
+                "duplicate", "gross proportions", "long neck"
             ]
             
-            # Style-specific negative additions
+            # Style-specific additions (keep concise)
             if style == "bw_manga":
                 negative_terms.extend([
-                    # Color-related (critical for B/W)
-                    "color", "colored", "colorful", "vibrant", "rainbow", "pastel",
-                    "saturated", "neon", "bright colors", "multicolored", 
-                    "vivid colors", "chromatic", "hue", "tint"
+                    "color", "colored", "vibrant", "saturated", "rainbow"
                 ])
-            else:  # color_anime
+            else:  # color_anime  
                 negative_terms.extend([
-                    # B/W when we want color
-                    "monochrome", "black and white", "grayscale", "greyscale"
+                    "monochrome", "black and white", "grayscale"
                 ])
             
             negative_prompt = ", ".join(negative_terms)
