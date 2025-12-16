@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface Project {
     job_id: string;
@@ -13,48 +14,130 @@ interface Project {
     cover_url?: string;
 }
 
-// Mock projects for now - will be replaced with API call
-const MOCK_PROJECTS: Project[] = [
-    {
-        job_id: "abc123",
-        title: "Cyberpunk Samurai",
-        pages: 12,
-        style: "color_anime",
-        created_at: "2024-12-14T10:00:00",
-        updated_at: "2024-12-14T12:00:00",
-    },
-    {
-        job_id: "def456",
-        title: "Shadow Hunter",
-        pages: 4,
-        style: "bw_manga",
-        created_at: "2024-12-13T10:00:00",
-        updated_at: "2024-12-13T14:00:00",
-    },
-    {
-        job_id: "ghi789",
-        title: "School Romance",
-        pages: 8,
-        style: "color_anime",
-        created_at: "2024-12-12T10:00:00",
-        updated_at: "2024-12-12T16:00:00",
-    },
-];
+interface User {
+    email: string;
+    id: string;
+    plan: string;
+}
 
 export default function DashboardPage() {
+    const router = useRouter();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [filter, setFilter] = useState<"all" | "drafts" | "published">("all");
     const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
+    const [user, setUser] = useState<User | null>(null);
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+    // Continue modal states
+    const [showContinueModal, setShowContinueModal] = useState(false);
+    const [continueProject, setContinueProject] = useState<Project | null>(null);
+    const [continuePages, setContinuePages] = useState(3);
+    const [continueDirection, setContinueDirection] = useState("");
+    const [continuing, setContinuing] = useState(false);
+
+    // Settings modal states
+    const [showSettings, setShowSettings] = useState(false);
+    const [apiKeys, setApiKeys] = useState({
+        GROQ_API_KEY: "",
+        NVIDIA_API_KEY: "",
+        GEMINI_API_KEY: ""
+    });
+
+    // Load settings
+    useEffect(() => {
+        const storedKeys = localStorage.getItem("mangagen_api_keys");
+        if (storedKeys) {
+            setApiKeys(JSON.parse(storedKeys));
+        }
+    }, []);
+
+    const handleSaveSettings = () => {
+        localStorage.setItem("mangagen_api_keys", JSON.stringify(apiKeys));
+        localStorage.setItem("mangagen_keys_configured", "true"); // Flag for other components
+        setShowSettings(false);
+        alert("Settings saved!");
+    };
+
+    // Handle continue button click
+    const handleContinue = async () => {
+        if (!continueProject) return;
+        setContinuing(true);
+
+        try {
+            const response = await fetch(`http://localhost:8000/api/projects/${continueProject.job_id}/continue`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    pages: continuePages,
+                    user_direction: continueDirection || null
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Navigate to the new job's preview
+                router.push(`/preview/${data.job_id}`);
+            } else {
+                const err = await response.json();
+                alert(err.detail || "Failed to start continuation");
+            }
+        } catch (error) {
+            console.error("Continue failed:", error);
+            alert("Network error. Please try again.");
+        } finally {
+            setContinuing(false);
+            setShowContinueModal(false);
+        }
+    };
+
+    const openContinueModal = (project: Project) => {
+        setContinueProject(project);
+        setContinuePages(3);
+        setContinueDirection("");
+        setShowContinueModal(true);
+    };
+
+    // Load user from localStorage
+    useEffect(() => {
+        const storedUser = localStorage.getItem("mangagen_user");
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch {
+                setUser({ email: "guest@mangagen.ai", id: "guest", plan: "free" });
+            }
+        } else {
+            setUser({ email: "guest@mangagen.ai", id: "guest", plan: "free" });
+        }
+    }, []);
+
+    const handleLogout = () => {
+        localStorage.removeItem("mangagen_token");
+        localStorage.removeItem("mangagen_user");
+        localStorage.removeItem("mangagen_demo");
+        router.push("/login");
+    };
 
     useEffect(() => {
-        // TODO: Fetch from API
-        // For now use mock data
-        setTimeout(() => {
-            setProjects(MOCK_PROJECTS);
-            setLoading(false);
-        }, 500);
+        // Fetch REAL projects from API
+        const fetchProjects = async () => {
+            try {
+                const response = await fetch("http://localhost:8000/api/projects");
+                if (response.ok) {
+                    const data = await response.json();
+                    setProjects(data.projects || []);
+                    console.log(`📦 Loaded ${data.projects?.length || 0} projects from ${data.source || 'api'}`);
+                }
+            } catch (error) {
+                console.error("Failed to fetch projects:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchProjects();
     }, []);
 
     const filteredProjects = projects
@@ -124,16 +207,57 @@ export default function DashboardPage() {
                         </nav>
                     </div>
 
-                    {/* User Profile */}
-                    <div className="pt-6 border-t border-white/5">
-                        <div className="flex items-center gap-3 px-2 py-2 rounded-full hover:bg-white/5 cursor-pointer transition-colors">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#38e07b] to-[#7c3aed] border-2 border-[#38e07b]"></div>
-                            <div className="flex flex-col overflow-hidden">
-                                <p className="text-white text-sm font-semibold truncate">Guest User</p>
-                                <p className="text-gray-400 text-xs truncate">Free Plan</p>
+                    {/* User Profile with Dropdown */}
+                    <div className="pt-6 border-t border-white/5 relative">
+                        <div
+                            onClick={() => setShowProfileMenu(!showProfileMenu)}
+                            className="flex items-center gap-3 px-2 py-2 rounded-full hover:bg-white/5 cursor-pointer transition-colors"
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#38e07b] to-[#7c3aed] border-2 border-[#38e07b] flex items-center justify-center">
+                                <span className="text-white font-bold text-sm">
+                                    {user?.email?.charAt(0).toUpperCase() || "G"}
+                                </span>
                             </div>
-                            <span className="material-symbols-outlined ml-auto text-gray-500">expand_more</span>
+                            <div className="flex flex-col overflow-hidden">
+                                <p className="text-white text-sm font-semibold truncate">
+                                    {user?.email?.split("@")[0] || "Guest"}
+                                </p>
+                                <p className="text-gray-400 text-xs truncate capitalize">
+                                    {user?.plan || "Free"} Plan
+                                </p>
+                            </div>
+                            <span className={`material-symbols-outlined ml-auto text-gray-500 transition-transform ${showProfileMenu ? "rotate-180" : ""}`}>
+                                expand_more
+                            </span>
                         </div>
+
+                        {/* Dropdown Menu */}
+                        {showProfileMenu && (
+                            <div className="absolute bottom-full left-0 right-0 mb-2 bg-[#16261e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                                <div className="px-4 py-3 border-b border-white/5">
+                                    <p className="text-white text-sm font-medium truncate">{user?.email}</p>
+                                    <p className="text-gray-500 text-xs">Signed in</p>
+                                </div>
+                                <Link href="/login" className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
+                                    <span className="material-symbols-outlined text-lg">person</span>
+                                    <span className="text-sm">Profile</span>
+                                </Link>
+                                <button
+                                    onClick={() => setShowSettings(true)}
+                                    className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 transition-colors w-full"
+                                >
+                                    <span className="material-symbols-outlined text-lg">settings</span>
+                                    <span className="text-sm">Settings</span>
+                                </button>
+                                <button
+                                    onClick={handleLogout}
+                                    className="flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors w-full"
+                                >
+                                    <span className="material-symbols-outlined text-lg">logout</span>
+                                    <span className="text-sm">Log out</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </aside>
@@ -180,8 +304,8 @@ export default function DashboardPage() {
                         <button
                             onClick={() => setFilter("all")}
                             className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium border transition-all ${filter === "all"
-                                    ? "bg-[#38e07b]/20 text-[#38e07b] border-[#38e07b]/20"
-                                    : "bg-[#16261e] text-gray-400 hover:text-white hover:bg-white/10 border-transparent"
+                                ? "bg-[#38e07b]/20 text-[#38e07b] border-[#38e07b]/20"
+                                : "bg-[#16261e] text-gray-400 hover:text-white hover:bg-white/10 border-transparent"
                                 }`}
                         >
                             All Projects
@@ -189,8 +313,8 @@ export default function DashboardPage() {
                         <button
                             onClick={() => setFilter("drafts")}
                             className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium border transition-all ${filter === "drafts"
-                                    ? "bg-[#38e07b]/20 text-[#38e07b] border-[#38e07b]/20"
-                                    : "bg-[#16261e] text-gray-400 hover:text-white hover:bg-white/10 border-transparent"
+                                ? "bg-[#38e07b]/20 text-[#38e07b] border-[#38e07b]/20"
+                                : "bg-[#16261e] text-gray-400 hover:text-white hover:bg-white/10 border-transparent"
                                 }`}
                         >
                             Drafts
@@ -198,8 +322,8 @@ export default function DashboardPage() {
                         <button
                             onClick={() => setFilter("published")}
                             className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium border transition-all ${filter === "published"
-                                    ? "bg-[#38e07b]/20 text-[#38e07b] border-[#38e07b]/20"
-                                    : "bg-[#16261e] text-gray-400 hover:text-white hover:bg-white/10 border-transparent"
+                                ? "bg-[#38e07b]/20 text-[#38e07b] border-[#38e07b]/20"
+                                : "bg-[#16261e] text-gray-400 hover:text-white hover:bg-white/10 border-transparent"
                                 }`}
                         >
                             Published
@@ -300,6 +424,13 @@ export default function DashboardPage() {
                                                 <span>Edit</span>
                                                 <span className="material-symbols-outlined text-[16px] group-hover/btn:translate-x-0.5 transition-transform">arrow_forward</span>
                                             </Link>
+                                            <button
+                                                onClick={() => openContinueModal(project)}
+                                                className="w-9 h-9 flex items-center justify-center rounded-full bg-[#38e07b]/20 hover:bg-[#38e07b] hover:text-black text-[#38e07b] transition-all"
+                                                title="Continue Story"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">add</span>
+                                            </button>
                                             <button className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-red-500/20 hover:text-red-500 text-gray-400 transition-all">
                                                 <span className="material-symbols-outlined text-[18px]">delete</span>
                                             </button>
@@ -320,6 +451,149 @@ export default function DashboardPage() {
                     )}
                 </div>
             </main>
+
+            {/* Continue Modal */}
+            {showContinueModal && continueProject && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]">
+                    <div className="bg-[#16261e] rounded-2xl p-8 max-w-lg w-full mx-4 border border-[#264532]">
+                        <div className="flex items-center gap-3 mb-6">
+                            <span className="material-symbols-outlined text-3xl text-[#38e07b]">auto_stories</span>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Continue Story</h3>
+                                <p className="text-gray-400 text-sm">{continueProject.title}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-5">
+                            {/* Page Count */}
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">
+                                    Number of new pages
+                                </label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={10}
+                                        value={continuePages}
+                                        onChange={(e) => setContinuePages(parseInt(e.target.value))}
+                                        className="flex-1 accent-[#38e07b]"
+                                    />
+                                    <span className="text-[#38e07b] font-bold text-lg w-8 text-center">{continuePages}</span>
+                                </div>
+                            </div>
+
+                            {/* Direction (Optional) */}
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">
+                                    Story direction <span className="text-gray-500">(optional)</span>
+                                </label>
+                                <textarea
+                                    value={continueDirection}
+                                    onChange={(e) => setContinueDirection(e.target.value)}
+                                    placeholder="e.g., 'Introduce a new villain' or 'Show a training montage'"
+                                    className="w-full bg-[#0a110e] border border-[#264532] rounded-lg px-4 py-3 text-white placeholder:text-gray-500 focus:border-[#38e07b] focus:outline-none resize-none"
+                                    rows={3}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                onClick={() => setShowContinueModal(false)}
+                                className="flex-1 py-3 rounded-lg border border-white/20 text-white hover:bg-white/5"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleContinue}
+                                disabled={continuing}
+                                className="flex-1 py-3 rounded-lg bg-[#38e07b] text-[#0a110e] font-bold hover:bg-[#2bc968] disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {continuing ? (
+                                    <>
+                                        <span className="material-symbols-outlined animate-spin text-lg">sync</span>
+                                        Generating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                                        Generate {continuePages} Pages
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Settings Modal */}
+            {showSettings && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[110]">
+                    <div className="bg-[#16261e] rounded-2xl p-8 max-w-lg w-full mx-4 border border-[#264532]">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <span className="material-symbols-outlined text-3xl text-gray-400">settings</span>
+                                <div>
+                                    <h3 className="text-xl font-bold text-white">API Settings</h3>
+                                    <p className="text-gray-400 text-sm">Configure your own API keys</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowSettings(false)} className="text-gray-500 hover:text-white">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">Groq API Key</label>
+                                <input
+                                    type="password"
+                                    value={apiKeys.GROQ_API_KEY}
+                                    onChange={(e) => setApiKeys({ ...apiKeys, GROQ_API_KEY: e.target.value })}
+                                    placeholder="gsk_..."
+                                    className="w-full bg-[#0a110e] border border-[#264532] rounded-lg px-4 py-3 text-white placeholder:text-gray-600 focus:border-[#38e07b] focus:outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">NVIDIA API Key</label>
+                                <input
+                                    type="password"
+                                    value={apiKeys.NVIDIA_API_KEY}
+                                    onChange={(e) => setApiKeys({ ...apiKeys, NVIDIA_API_KEY: e.target.value })}
+                                    placeholder="nvapi-..."
+                                    className="w-full bg-[#0a110e] border border-[#264532] rounded-lg px-4 py-3 text-white placeholder:text-gray-600 focus:border-[#38e07b] focus:outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">Gemini API Key</label>
+                                <input
+                                    type="password"
+                                    value={apiKeys.GEMINI_API_KEY}
+                                    onChange={(e) => setApiKeys({ ...apiKeys, GEMINI_API_KEY: e.target.value })}
+                                    placeholder="AIza..."
+                                    className="w-full bg-[#0a110e] border border-[#264532] rounded-lg px-4 py-3 text-white placeholder:text-gray-600 focus:border-[#38e07b] focus:outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                onClick={() => setShowSettings(false)}
+                                className="flex-1 py-3 rounded-lg border border-white/20 text-white hover:bg-white/5"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveSettings}
+                                className="flex-1 py-3 rounded-lg bg-[#38e07b] text-[#0a110e] font-bold hover:bg-[#2bc968]"
+                            >
+                                Save Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

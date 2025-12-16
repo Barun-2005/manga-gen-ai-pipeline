@@ -188,10 +188,16 @@ export default function Home() {
             <nav className="hidden md:flex items-center gap-8">
               <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#features">How it Works</a>
               <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#gallery">Gallery</a>
+              <Link href="/dashboard" className="text-gray-300 hover:text-white text-sm font-medium transition-colors">Dashboard</Link>
             </nav>
-            <Link href="/create" className="flex items-center justify-center rounded-full h-10 px-5 bg-[#38e07b] hover:bg-[#2bc968] text-[#0a110e] text-sm font-bold transition-all shadow-[0_0_15px_rgba(56,224,123,0.3)] hover:shadow-[0_0_25px_rgba(56,224,123,0.5)]">
-              Get Started
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/login" className="hidden sm:flex items-center justify-center rounded-full h-10 px-5 border border-[#264532] hover:border-[#38e07b]/50 text-white text-sm font-medium transition-all">
+                Sign In
+              </Link>
+              <Link href="/create" className="flex items-center justify-center rounded-full h-10 px-5 bg-[#38e07b] hover:bg-[#2bc968] text-[#0a110e] text-sm font-bold transition-all shadow-[0_0_15px_rgba(56,224,123,0.3)] hover:shadow-[0_0_25px_rgba(56,224,123,0.5)]">
+                Get Started
+              </Link>
+            </div>
           </div>
         </div>
       </header>

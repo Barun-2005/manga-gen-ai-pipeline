@@ -36,3 +36,8 @@ archive/
 stitch_ui/
 docs/
 *.docx
+
+# Internal docs (development use only)
+TESTING.md
+PRODUCTION.md
+.cache/

@@ -83,6 +83,17 @@ export default function CreatePage() {
 
             console.log("Submitting generation request...");
 
+            // Get API keys from localStorage (BYOK)
+            let apiKeys = {};
+            const storedKeys = localStorage.getItem("mangagen_api_keys");
+            if (storedKeys) {
+                try {
+                    apiKeys = JSON.parse(storedKeys);
+                } catch (e) {
+                    console.error("Failed to parse API keys", e);
+                }
+            }
+
             const response = await fetch("http://localhost:8000/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -93,6 +104,7 @@ export default function CreatePage() {
                     layout: layout,
                     pages: pageCount,
                     image_provider: imageProvider,
+                    api_keys: apiKeys, // Send keys to backend
                     characters: characters.map(c => ({
                         name: c.name,
                         appearance: c.appearance,

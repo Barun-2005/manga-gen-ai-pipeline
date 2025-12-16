@@ -252,6 +252,244 @@ Return ONLY the enhanced prompt (2-4 sentences), no explanation."""
         
         return enhanced
     
+    def generate_blueprint(
+        self,
+        story_prompt: str,
+        characters: List[Dict],
+        style: str,
+        estimated_chapters: int = 3
+    ) -> Dict:
+        """
+        Generate a complete story blueprint for multi-chapter continuation.
+        
+        This is called ONCE when creating a new manga. The blueprint stores:
+        - Full story arc overview
+        - All character details with visual DNA
+        - Chapter-by-chapter outlines
+        - World/setting details
+        
+        This enables seamless continuation without losing consistency.
+        """
+        
+        char_info = "\n".join([
+            f"- {c['name']}: {c.get('appearance', 'no description')} | Personality: {c.get('personality', 'not specified')}"
+            for c in characters
+        ]) if characters else "Create main characters based on the story."
+        
+        prompt = f"""You are a MASTER MANGA STORY ARCHITECT. Create a complete STORY BLUEPRINT.
+
+## USER'S STORY CONCEPT
+{story_prompt}
+
+## USER-PROVIDED CHARACTERS
+{char_info}
+
+## REQUIREMENTS
+- Plan for approximately {estimated_chapters} chapters
+- Each chapter should be 3-5 pages worth of content
+- Create a complete story arc with beginning, middle, and end
+- BUT leave room for potential continuation beyond these chapters
+
+## YOUR TASK
+Create a comprehensive story blueprint that will guide all future page generation.
+
+## OUTPUT FORMAT (JSON only, no markdown)
+{{
+  "title": "Manga Title",
+  "genre": "action/romance/fantasy/sci-fi/horror/slice-of-life",
+  "overall_arc": "2-3 sentence description of the complete story journey",
+  "theme": "Core theme or message of the story",
+  
+  "characters": [
+    {{
+      "id": "char_001",
+      "name": "Character Name",
+      "appearance": "DETAILED visual description for consistent image generation - hair color/style, eye color, clothing, distinguishing features",
+      "personality": "Key personality traits",
+      "role": "protagonist/antagonist/mentor/sidekick/rival",
+      "arc": "How this character changes through the story"
+    }}
+  ],
+  
+  "world_details": {{
+    "setting": "Where the story takes place",
+    "time_period": "When (modern, future, fantasy era, etc)",
+    "atmosphere": "Overall mood/tone",
+    "key_locations": ["Location 1", "Location 2", "Location 3"],
+    "visual_style": "{style}"
+  }},
+  
+  "chapter_outlines": [
+    {{
+      "chapter": 1,
+      "title": "Chapter Title",
+      "summary": "What happens in this chapter (3-4 sentences)",
+      "key_events": ["Event 1", "Event 2", "Event 3"],
+      "emotional_arc": "How emotions progress (e.g., 'hopeful to desperate to determined')",
+      "cliffhanger": "How this chapter ends to hook readers",
+      "estimated_pages": 4
+    }}
+  ],
+  
+  "continuation_hooks": [
+    "Potential future story thread 1",
+    "Potential future story thread 2"
+  ]
+}}"""
+
+        content = self.llm.generate(prompt, max_tokens=4000)
+        
+        # Parse JSON from response
+        import re
+        
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0]
+        
+        try:
+            blueprint = json.loads(content.strip())
+            
+            # Ensure required fields exist
+            if "characters" not in blueprint:
+                blueprint["characters"] = characters
+            if "world_details" not in blueprint:
+                blueprint["world_details"] = {"visual_style": style}
+            if "chapter_outlines" not in blueprint:
+                blueprint["chapter_outlines"] = []
+            
+            print(f"📘 Generated blueprint: {blueprint.get('title', 'Untitled')} with {len(blueprint.get('chapter_outlines', []))} chapters")
+            return blueprint
+            
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Blueprint JSON parse failed: {e}")
+            # Return minimal blueprint
+            return {
+                "title": "Untitled Manga",
+                "genre": "action",
+                "overall_arc": story_prompt,
+                "characters": characters,
+                "world_details": {"visual_style": style},
+                "chapter_outlines": [],
+                "continuation_hooks": []
+            }
+    
+    def plan_continuation(
+        self,
+        blueprint: Dict,
+        previous_pages_summary: str,
+        last_panel_description: str,
+        new_page_count: int,
+        user_direction: str = None
+    ) -> Dict:
+        """
+        Generate next pages continuing from where we left off.
+        
+        Uses the stored blueprint + previous progress to maintain consistency.
+        """
+        
+        characters = blueprint.get("characters", [])
+        char_info = "\n".join([
+            f"- {c['name']}: {c.get('appearance', '')} | {c.get('personality', '')}"
+            for c in characters
+        ])
+        
+        chapter_outlines = blueprint.get("chapter_outlines", [])
+        outline_info = "\n".join([
+            f"Chapter {c['chapter']}: {c['title']} - {c['summary']}"
+            for c in chapter_outlines
+        ])
+        
+        user_note = f"\n## USER'S DIRECTION\n{user_direction}" if user_direction else ""
+        
+        prompt = f"""You are continuing a manga story. Generate the NEXT {new_page_count} pages.
+
+## STORY BLUEPRINT
+Title: {blueprint.get('title', 'Untitled')}
+Overall Arc: {blueprint.get('overall_arc', '')}
+Theme: {blueprint.get('theme', '')}
+
+## CHARACTERS (Use EXACT appearances for image prompts!)
+{char_info}
+
+## CHAPTER OUTLINES
+{outline_info}
+
+## PREVIOUS PROGRESS
+Pages generated so far: {previous_pages_summary}
+Last panel showed: {last_panel_description}
+{user_note}
+
+## VISUAL PROMPT ENGINEERING RULES
+For EVERY panel, the visual_prompt MUST follow these rules:
+
+1. **USE COMMA-SEPARATED TAGS, NOT SENTENCES**
+   - GOOD: "Akira close-up, shocked expression, rain, neon lights, dutch angle, dramatic shadows, manga style"
+   - BAD: "Akira looks shocked while standing in the rain"
+
+2. **ALWAYS INCLUDE THESE ELEMENTS**:
+   - Character name + EXACT appearance from their description above
+   - Camera shot: wide shot | medium shot | close-up | extreme close-up | over-the-shoulder
+   - Camera angle: straight-on | dutch angle | low angle | high angle
+   - Lighting/mood: dramatic shadows | soft lighting | rim light | backlit | moody
+   - Style tags: manga style, monochrome, ink lineart, screentone, high contrast
+
+3. **CHARACTER CONSISTENCY IS CRITICAL**
+   - Copy the character's appearance EXACTLY from the CHARACTERS section above
+   - Include hair color, eye color, clothing, distinguishing features
+
+4. **PANEL VARIETY**
+   - Mix shot types: don't use same camera for every panel
+   - Vary composition: rule of thirds, center frame, dynamic diagonal
+   - Emotional progression: match lighting to emotional beat
+
+## YOUR TASK
+Generate EXACTLY {new_page_count} new pages that:
+1. Continue EXACTLY from where we left off
+2. Use the SAME characters with their EXACT appearance descriptions
+3. Follow the chapter outlines but adapt pacing to page count
+4. DO NOT repeat any scenes already shown
+5. End with a hook for further continuation
+
+## OUTPUT FORMAT (JSON only, no markdown)
+{{
+  "pages": [
+    {{
+      "page_number": 1,
+      "page_summary": "What happens on this page",
+      "emotional_beat": "tense/exciting/sad/mysterious/hopeful",
+      "panels": [
+        {{
+          "panel_number": 1,
+          "shot_type": "wide shot/medium shot/close-up/extreme close-up/over-the-shoulder",
+          "camera_angle": "straight-on/dutch angle/low angle/high angle",
+          "lighting_mood": "dramatic shadows/soft lighting/rim light/backlit/moody",
+          "visual_prompt": "COMMA-SEPARATED TAGS: [character name + appearance], [action], [camera], [setting], [mood], manga style, monochrome, ink lineart, screentone",
+          "characters_present": ["Character Name"],
+          "dialogue": [
+            {{"character": "Name", "text": "Dialogue line", "style": "speech/thought/shout/narrator"}}
+          ]
+        }}
+      ]
+    }}
+  ],
+  "progress_summary": "What was accomplished in these pages",
+  "last_panel_description": "Description of the final panel for next continuation"
+}}"""
+
+        content = self.llm.generate(prompt, max_tokens=4000)
+        
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0]
+        
+        try:
+            return json.loads(content.strip())
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Continuation parse failed: {e}")
+            return {"pages": [], "progress_summary": "", "last_panel_description": ""}
+    
     def generate_gallery_images(self, count: int = 6) -> List[Dict]:
         """
         Generate random anime scene ideas for the gallery.

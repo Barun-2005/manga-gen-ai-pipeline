@@ -39,12 +39,16 @@ interface JobStatus {
     };
 }
 
-// Bubble style options
+// Bubble style options - 8 manga styles
 const BUBBLE_STYLES = [
     { id: "speech", icon: "chat_bubble", label: "Speech" },
     { id: "thought", icon: "cloud", label: "Thought" },
     { id: "shout", icon: "campaign", label: "Shout" },
     { id: "narrator", icon: "article", label: "Narrator" },
+    { id: "scream", icon: "crisis_alert", label: "Scream" },
+    { id: "whisper", icon: "hearing", label: "Whisper" },
+    { id: "impact", icon: "bolt", label: "Impact" },
+    { id: "radio", icon: "radio", label: "Radio" },
 ];
 
 export default function PreviewPage() {
@@ -61,16 +65,64 @@ export default function PreviewPage() {
     const [editingText, setEditingText] = useState("");
     const [bubbleStyle, setBubbleStyle] = useState<string>("speech");
     const [fontSize, setFontSize] = useState(14);
+    const [fontFamily, setFontFamily] = useState("Manga Sans");
+    const [tailDirection, setTailDirection] = useState<"bottom" | "top" | "left" | "right">("bottom");
     const [regenerating, setRegenerating] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [regenPrompt, setRegenPrompt] = useState("");
+
+    // Save project states
+    const [saving, setSaving] = useState(false);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error", text: string } | null>(null);
 
     // Dialogues state: Map of panelId -> BubbleData[]
     const [panelDialogues, setPanelDialogues] = useState<Record<string, BubbleData[]>>({});
 
-    // Handle dialogue updates from the canvas
+    // Undo/Redo history for dialogue edits
+    const [dialogueHistory, setDialogueHistory] = useState<Record<string, BubbleData[]>[]>([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
+    const MAX_HISTORY = 50;
+
+    // Handle dialogue updates from the canvas - WITH UNDO SUPPORT
     const handleDialoguesChange = (panelId: string, dialogues: BubbleData[]) => {
-        setPanelDialogues(prev => ({ ...prev, [panelId]: dialogues }));
+        setPanelDialogues(prev => {
+            const newState = { ...prev, [panelId]: dialogues };
+
+            // Push to history (truncate future states if we're in the middle of history)
+            setDialogueHistory(prevHistory => {
+                const currentHistory = prevHistory.slice(0, historyIndex + 1);
+                const newHistory = [...currentHistory, newState].slice(-MAX_HISTORY);
+                setHistoryIndex(newHistory.length - 1);
+                return newHistory;
+            });
+
+            return newState;
+        });
     };
+
+    // Undo function
+    const handleUndo = () => {
+        if (historyIndex > 0) {
+            const newIndex = historyIndex - 1;
+            setHistoryIndex(newIndex);
+            setPanelDialogues(dialogueHistory[newIndex] || {});
+        }
+    };
+
+    // Redo function
+    const handleRedo = () => {
+        if (historyIndex < dialogueHistory.length - 1) {
+            const newIndex = historyIndex + 1;
+            setHistoryIndex(newIndex);
+            setPanelDialogues(dialogueHistory[newIndex] || {});
+        }
+    };
+
+    // Can undo/redo checks
+    const canUndo = historyIndex > 0;
+    const canRedo = historyIndex < dialogueHistory.length - 1;
+
 
     // Get the currently selected bubble data
     const getSelectedBubbleData = () => {
@@ -115,6 +167,30 @@ export default function PreviewPage() {
         setSelectedBubble(null);
     };
 
+    // Update selected bubble's text - SYNCS SIDEBAR TO BUBBLE
+    const updateBubbleText = (newText: string) => {
+        setEditingText(newText);
+        if (!selectedBubble || selectedPanel === null) return;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        const updated = dialogues.map(b =>
+            b.id === selectedBubble ? { ...b, text: newText } : b
+        );
+        handleDialoguesChange(panelId, updated);
+    };
+
+    // Update selected bubble's font family
+    const updateBubbleFontFamily = (newFont: string) => {
+        setFontFamily(newFont);
+        if (!selectedBubble || selectedPanel === null) return;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        const updated = dialogues.map(b =>
+            b.id === selectedBubble ? { ...b, fontFamily: newFont } : b
+        );
+        handleDialoguesChange(panelId, updated);
+    };
+
     // Handle bubble selection from canvas (sync sidebar)
     const handleBubbleSelection = (bubbleId: string | null) => {
         setSelectedBubble(bubbleId);
@@ -126,8 +202,22 @@ export default function PreviewPage() {
                 setEditingText(bubble.text);
                 setBubbleStyle(bubble.style);
                 setFontSize(bubble.fontSize || 14);
+                setFontFamily(bubble.fontFamily || "Manga Sans");
+                setTailDirection(bubble.tailDirection || "bottom");
             }
         }
+    };
+
+    // Update selected bubble's tail direction
+    const updateBubbleTailDirection = (newDirection: "bottom" | "top" | "left" | "right") => {
+        if (!selectedBubble || selectedPanel === null) return;
+        const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+        const dialogues = panelDialogues[panelId] || [];
+        const updated = dialogues.map(b =>
+            b.id === selectedBubble ? { ...b, tailDirection: newDirection } : b
+        );
+        setPanelDialogues(prev => ({ ...prev, [panelId]: updated }));
+        setTailDirection(newDirection);
     };
 
     // Parse layout to get grid dimensions (supports 2x2, 2x3, 3x3, etc)
@@ -163,15 +253,97 @@ export default function PreviewPage() {
         fetchJob();
     }, [jobId]);
 
+    // AUTO-LOAD DIALOGUES FROM LLM - This populates canvas with story dialogue!
+    useEffect(() => {
+        if (!job?.result?.pages) return;
+
+        // The backend sends: page.dialogue = [{panel_index, dialogues: [{character, text, style}]}]
+        type DialogueEntry = {
+            panel_index: number;
+            dialogues: Array<{
+                character?: string;
+                text: string;
+                style?: string;
+            }>;
+        };
+
+        const pages = job.result.pages as Array<{
+            page_number: number;
+            dialogue?: DialogueEntry[];
+        }>;
+
+        const newDialogues: Record<string, BubbleData[]> = {};
+
+        pages.forEach((page, pageIdx) => {
+            const pageNum = page.page_number || pageIdx + 1;
+            const dialogueData = page.dialogue || [];
+
+            // Each entry has panel_index and nested dialogues array
+            dialogueData.forEach((panelDialogue) => {
+                const panelIdx = panelDialogue.panel_index;
+                const panelId = `page-${pageNum}-panel-${panelIdx}`;
+
+                if (!newDialogues[panelId]) {
+                    newDialogues[panelId] = [];
+                }
+
+                // Iterate through actual dialogue lines for this panel
+                const dialogueLines = panelDialogue.dialogues || [];
+                dialogueLines.forEach((d, dIdx) => {
+                    // Better positioning: start from top-left, stack down
+                    const xPos = 10 + (dIdx % 2) * 40; // Alternate left/right
+                    const yPos = 10 + dIdx * 20; // Stack down
+
+                    const bubble: BubbleData = {
+                        id: `llm-${pageNum}-${panelIdx}-${dIdx}`,
+                        text: d.text || "...",
+                        x: Math.min(xPos, 80), // Keep within bounds
+                        y: Math.min(yPos, 70),
+                        style: (d.style === "narrator" || d.style === "thought" ||
+                            d.style === "shout" || d.style === "whisper")
+                            ? d.style as BubbleData["style"] : "speech",
+                        character: d.character,
+                        fontSize: 11
+                    };
+
+                    newDialogues[panelId].push(bubble);
+                });
+            });
+        });
+
+        // Only set if we have dialogues and panelDialogues is empty
+        if (Object.keys(newDialogues).length > 0) {
+            setPanelDialogues(prev => {
+                // Don't overwrite if user already edited
+                if (Object.keys(prev).length > 0) return prev;
+                console.log("📝 Auto-loaded LLM dialogues:", Object.keys(newDialogues).length, "panels with dialogue");
+                return newDialogues;
+            });
+        }
+    }, [job]);
+
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't trigger if typing in an input
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            // Undo: Ctrl+Z
+            if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+                e.preventDefault();
+                handleUndo();
+            }
+
+            // Redo: Ctrl+Y or Ctrl+Shift+Z
+            if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+                e.preventDefault();
+                handleRedo();
+            }
+
             // Delete selected bubble
             if ((e.key === "Delete" || e.key === "Backspace") && selectedBubble) {
-                // Don't trigger if typing in an input
-                if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-                    return;
-                }
                 e.preventDefault();
                 deleteSelectedBubble();
             }
@@ -179,11 +351,61 @@ export default function PreviewPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedBubble, selectedPanel, currentPage, panelDialogues]);
+    }, [selectedBubble, selectedPanel, currentPage, panelDialogues, historyIndex, dialogueHistory]);
 
     const downloadFile = (type: "pdf" | "png" | "zip") => {
-        window.open(`http://localhost:8000/api/download/${jobId}/${type}`, "_blank");
+        // For PDF export, send dialogue data so backend renders bubbles on images
+        const dialoguesParam = type === "pdf" ? `?dialogues=${encodeURIComponent(JSON.stringify(panelDialogues))}` : "";
+        window.open(`http://localhost:8000/api/download/${jobId}/${type}${dialoguesParam}`, "_blank");
         setShowExportMenu(false);
+    };
+
+    // Save project to user profile
+    const handleSaveProject = async () => {
+        // Check if user is logged in
+        const token = localStorage.getItem("mangagen_token");
+
+        if (!token) {
+            setShowLoginModal(true);
+            return;
+        }
+
+        setSaving(true);
+        setSaveMessage(null);
+
+        try {
+            const response = await fetch("http://localhost:8000/api/projects/save", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    job_id: jobId,
+                    title: job?.result?.title || "Untitled Manga",
+                    dialogues: panelDialogues  // All dialogue positions and text
+                })
+            });
+
+            if (response.status === 401) {
+                // Token invalid/expired
+                setShowLoginModal(true);
+                return;
+            }
+
+            if (response.ok) {
+                const data = await response.json();
+                setSaveMessage({ type: "success", text: "✅ Saved to your profile!" });
+                setTimeout(() => setSaveMessage(null), 3000);
+            } else {
+                const err = await response.json();
+                setSaveMessage({ type: "error", text: err.detail || "Failed to save" });
+            }
+        } catch (error) {
+            setSaveMessage({ type: "error", text: "Network error. Please try again." });
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleRegenerate = async () => {
@@ -197,7 +419,7 @@ export default function PreviewPage() {
                 body: JSON.stringify({
                     page: currentPage,
                     panel: selectedPanel,
-                    prompt_override: editingText || undefined
+                    prompt_override: regenPrompt || undefined
                 })
             });
 
@@ -262,11 +484,6 @@ export default function PreviewPage() {
 
                     <div className="h-6 w-px bg-white/10 mx-2"></div>
 
-                    {/* Save & Export */}
-                    <button className="flex items-center justify-center h-9 px-4 rounded-full bg-[#16261e] hover:bg-[#264532] text-sm font-bold text-white transition-colors">
-                        <span className="material-symbols-outlined text-[18px] mr-2">save</span>
-                        Save
-                    </button>
 
                     <div className="relative">
                         <button
@@ -293,8 +510,55 @@ export default function PreviewPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Save Button */}
+                    <button
+                        onClick={handleSaveProject}
+                        disabled={saving}
+                        className="flex items-center justify-center h-9 px-4 rounded-full border border-[#38e07b] text-[#38e07b] hover:bg-[#38e07b]/10 text-sm font-bold transition-colors disabled:opacity-50"
+                    >
+                        <span className={`material-symbols-outlined text-[18px] mr-2 ${saving ? "animate-spin" : ""}`}>
+                            {saving ? "sync" : "save"}
+                        </span>
+                        {saving ? "Saving..." : "Save"}
+                    </button>
+
+                    {/* Save Message Toast */}
+                    {saveMessage && (
+                        <div className={`absolute top-full mt-2 right-0 px-4 py-2 rounded-lg text-sm font-medium ${saveMessage.type === "success" ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-red-500/20 text-red-400 border border-red-500/30"
+                            }`}>
+                            {saveMessage.text}
+                        </div>
+                    )}
                 </div>
             </header>
+
+            {/* Login Required Modal */}
+            {showLoginModal && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]">
+                    <div className="bg-[#16261e] rounded-2xl p-8 max-w-md w-full mx-4 border border-[#264532] z-[101]">
+                        <div className="text-center">
+                            <span className="material-symbols-outlined text-5xl text-[#38e07b] mb-4">account_circle</span>
+                            <h3 className="text-xl font-bold text-white mb-2">Login to Save</h3>
+                            <p className="text-gray-400 mb-6">Create an account or login to save your manga to your profile.</p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowLoginModal(false)}
+                                    className="flex-1 py-3 rounded-lg border border-white/20 text-white hover:bg-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <a
+                                    href="/login"
+                                    className="flex-1 py-3 rounded-lg bg-[#38e07b] text-[#0a110e] font-bold hover:bg-[#2bc968] text-center"
+                                >
+                                    Login
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Main Content */}
             <main className="flex flex-1 overflow-hidden">
@@ -423,6 +687,25 @@ export default function PreviewPage() {
 
                     {/* Canvas Controls - Fixed at bottom of canvas area */}
                     <div className="sticky bottom-6 left-1/2 -translate-x-1/2 w-fit mx-auto flex items-center gap-2 bg-[#0a110e]/90 backdrop-blur-md px-2 py-1.5 rounded-full border border-white/10 shadow-xl z-20">
+                        {/* Undo/Redo */}
+                        <button
+                            onClick={handleUndo}
+                            disabled={!canUndo}
+                            className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Undo (Ctrl+Z)"
+                        >
+                            <span className="material-symbols-outlined text-[20px]">undo</span>
+                        </button>
+                        <button
+                            onClick={handleRedo}
+                            disabled={!canRedo}
+                            className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Redo (Ctrl+Y)"
+                        >
+                            <span className="material-symbols-outlined text-[20px]">redo</span>
+                        </button>
+                        <div className="w-px h-4 bg-white/20 mx-1"></div>
+                        {/* Zoom Controls */}
                         <button
                             onClick={() => setZoom(Math.max(50, zoom - 10))}
                             className="w-8 h-8 flex items-center justify-center rounded-full text-white hover:bg-white/10"
@@ -468,22 +751,32 @@ export default function PreviewPage() {
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center">
                                         <h4 className="text-sm font-bold text-white">Panel Settings</h4>
-                                        <button className="text-xs text-[#38e07b] hover:underline">Reset</button>
+                                        <button
+                                            onClick={() => setRegenPrompt("")}
+                                            className="text-xs text-[#38e07b] hover:underline"
+                                        >
+                                            Reset
+                                        </button>
                                     </div>
                                     <div className="p-4 rounded-xl bg-[#16261e] border border-[#264532]">
-                                        <label className="text-xs font-semibold text-white/50 mb-2 block">Prompt</label>
-                                        <p className="text-sm italic text-white/70 mb-3">
-                                            "Samurai shouting commands, close up face, dramatic shadows, ink lines"
-                                        </p>
+                                        <label className="text-xs font-semibold text-white/50 mb-2 block">
+                                            Regeneration Prompt (edit to improve)
+                                        </label>
+                                        <textarea
+                                            value={regenPrompt}
+                                            onChange={(e) => setRegenPrompt(e.target.value)}
+                                            placeholder="Describe how you want this panel regenerated... (e.g., 'close-up face, more dramatic shadows, angry expression')"
+                                            className="w-full h-20 bg-[#0a110e] border border-[#264532] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#38e07b] resize-none mb-3"
+                                        />
                                         <button
                                             onClick={handleRegenerate}
                                             disabled={regenerating}
-                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#38e07b]/10 hover:bg-[#38e07b]/20 text-[#38e07b] text-xs font-bold transition-colors disabled:opacity-50"
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#38e07b] hover:bg-[#2bc968] text-[#0a110e] text-sm font-bold transition-colors disabled:opacity-50"
                                         >
                                             <span className={`material-symbols-outlined text-sm ${regenerating ? "animate-spin" : ""}`}>
                                                 autorenew
                                             </span>
-                                            {regenerating ? "Regenerating..." : "Regenerate Image"}
+                                            {regenerating ? "Regenerating..." : "Regenerate Panel"}
                                         </button>
                                     </div>
 
@@ -513,7 +806,7 @@ export default function PreviewPage() {
                                         <label className="text-xs font-semibold text-white/50 block">Content</label>
                                         <textarea
                                             value={editingText}
-                                            onChange={(e) => setEditingText(e.target.value)}
+                                            onChange={(e) => updateBubbleText(e.target.value)}
                                             placeholder="Enter dialogue text..."
                                             className="w-full bg-[#16261e] border border-[#264532] rounded-xl p-3 text-sm text-white focus:ring-2 focus:ring-[#38e07b] focus:border-transparent outline-none resize-none"
                                             rows={3}
@@ -523,10 +816,17 @@ export default function PreviewPage() {
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-2">
                                             <label className="text-xs font-semibold text-white/50 block">Font</label>
-                                            <select className="w-full bg-[#16261e] border border-[#264532] rounded-lg py-2 px-3 text-xs text-white appearance-none">
-                                                <option>Manga Sans</option>
-                                                <option>Action Bold</option>
-                                                <option>Whisper Thin</option>
+                                            <select
+                                                value={fontFamily}
+                                                onChange={(e) => updateBubbleFontFamily(e.target.value)}
+                                                disabled={!selectedBubble}
+                                                className="w-full bg-[#16261e] border border-[#264532] rounded-lg py-2 px-3 text-xs text-white appearance-none disabled:opacity-50"
+                                            >
+                                                <option value="Manga Sans">Manga Sans</option>
+                                                <option value="Action Bold">Action Bold</option>
+                                                <option value="Whisper Thin">Whisper Thin</option>
+                                                <option value="Comic Sans MS">Comic Style</option>
+                                                <option value="Arial Black">Impact Bold</option>
                                             </select>
                                         </div>
                                         <div className="space-y-2">
@@ -572,6 +872,34 @@ export default function PreviewPage() {
                                                 >
                                                     <span className="material-symbols-outlined text-white text-sm">
                                                         {style.icon}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Tail Direction Control */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold text-white/50 block">Arrow Direction</label>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {[
+                                                { dir: "top" as const, icon: "arrow_upward", label: "Top" },
+                                                { dir: "bottom" as const, icon: "arrow_downward", label: "Bottom" },
+                                                { dir: "left" as const, icon: "arrow_back", label: "Left" },
+                                                { dir: "right" as const, icon: "arrow_forward", label: "Right" },
+                                            ].map((item) => (
+                                                <button
+                                                    key={item.dir}
+                                                    onClick={() => updateBubbleTailDirection(item.dir)}
+                                                    disabled={!selectedBubble}
+                                                    className={`aspect-square rounded-lg border-2 flex items-center justify-center transition-all disabled:opacity-50 ${tailDirection === item.dir
+                                                        ? "border-[#38e07b] bg-[#38e07b]/10"
+                                                        : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50"
+                                                        }`}
+                                                    title={item.label}
+                                                >
+                                                    <span className="material-symbols-outlined text-white text-sm">
+                                                        {item.icon}
                                                     </span>
                                                 </button>
                                             ))}

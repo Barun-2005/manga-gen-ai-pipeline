@@ -326,7 +326,7 @@ class PollinationsGenerator:
             )
             
             try:
-                response = requests.get(url, headers=headers, timeout=timeout)
+                response = requests.get(url, headers=headers, timeout=60)  # 60 second timeout
                 
                 if response.status_code == 200:
                     filepath = self.output_dir / filename
