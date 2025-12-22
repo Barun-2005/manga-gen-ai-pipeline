@@ -1,52 +1,29 @@
-# MangaGen - AI Coding Agent Powered Manga Studio
+# MangaGen
 
-An automated manga generation engine that converts text stories into consistent, multi-page manga chapters. Built with ComfyUI, Python, and React.
+Text-to-manga generator. Give it a story prompt, get back a multi-page manga with consistent characters.
 
-**Status:** V4.5 Production Ready
+Built because I got tired of AI art generators giving me different faces every panel.
 
----
+## What it does
 
-## 🚀 Key Features
+- **Dynamic layouts** - LLM picks layouts based on the scene (action = diagonal panels, dialogue = talking heads)
+- **Character consistency** - Same character looks the same across panels using visual DNA extraction
+- **Bubble placement** - Auto-places speech bubbles avoiding faces
+- **Continue story** - Add more pages to existing manga without creating duplicate projects
 
-### V4 Dynamic Layout Engine
-No fixed grids. The LLM Story Director chooses from 15+ layout templates based on narrative context - action scenes get dynamic diagonals, dialogue gets talk panels.
+## Tech
 
-### Character Consistency (Z-Image Hybrid Workflow)
-Uses a custom ComfyUI workflow with Z-Image for manga-style generation. Character DNA is extracted and maintained across panels for visual consistency.
+- Python/FastAPI backend
+- Next.js frontend  
+- ComfyUI for image gen (Z-Image SDXL)
+- Groq/Llama-70b for story planning
+- MongoDB for persistence
 
-### Smart Bubble Placement
-Face detection system finds safe zones for dialogue bubbles, avoiding character faces. Bubbles auto-position based on panel composition.
-
-### Project Merging (Infinite Story Continuation)
-"Continue Story" appends new pages to existing projects. No duplicate entries - pages merge seamlessly with correct numbering.
-
----
-
-## 🛠️ Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| **Backend** | Python 3.10, FastAPI |
-| **Frontend** | React, Next.js 14, TypeScript |
-| **Image Gen** | ComfyUI (Z-Image SDXL) |
-| **LLM** | Groq (Llama-3.3-70b), Gemini, NVIDIA NIM |
-| **Database** | MongoDB Atlas |
-| **Styling** | Tailwind CSS |
-
----
-
-## ⚡ Quick Setup
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- ComfyUI with Z-Image models
-- MongoDB Atlas account (or local MongoDB)
-
-### 1. Clone & Install
+## Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/manga-gen-ai-pipeline.git
+# Clone
+git clone https://github.com/Barun-2005/manga-gen-ai-pipeline.git
 cd manga-gen-ai-pipeline
 
 # Backend
@@ -54,83 +31,40 @@ pip install -r requirements.txt
 
 # Frontend
 cd frontend && npm install
-```
 
-### 2. Environment Setup
-
-```bash
+# Copy env and add your keys
 cp .env.example .env
-# Edit .env with your API keys:
-# - GROQ_API_KEY
-# - MONGODB_URI
-# - GOOGLE_API_KEY (optional)
 ```
 
-### 3. Run
+## Run
 
-**Terminal 1 - ComfyUI:**
 ```bash
+# Terminal 1 - ComfyUI
 py -3.10 ComfyUI/main.py --listen --port 8188 --novram
-```
 
-**Terminal 2 - Backend:**
-```bash
+# Terminal 2 - Backend  
 py -3.10 -m uvicorn api.main:app --reload --port 8000
-```
 
-**Terminal 3 - Frontend:**
-```bash
+# Terminal 3 - Frontend
 cd frontend && npm run dev
 ```
 
-Visit: `http://localhost:3000`
+Go to `localhost:3000`
 
----
-
-## 📁 Project Structure
+## Structure
 
 ```
-manga-gen-ai-pipeline/
-├── api/                  # FastAPI backend
-│   └── main.py           # Main API endpoints
-├── scripts/              # Core generation logic
-│   ├── generate_manga.py # MangaGenerator class
-│   ├── layout_templates.py
-│   └── image_generator.py
-├── src/                  # Utilities & database
-│   └── database/
-├── frontend/             # Next.js React app
-│   └── src/app/
-├── ComfyUI/              # Image generation (git-ignored)
-└── outputs/              # Generated mangas (git-ignored)
+api/          - FastAPI endpoints
+scripts/      - Core generation (MangaGenerator, layouts)
+src/          - Database, utils
+frontend/     - Next.js app
+ComfyUI/      - Image gen (not in repo, download separately)
 ```
 
----
+## Gallery
 
-## 🎨 Generated Samples
-
-*Coming soon - Gallery of generated manga pages*
+*will add sample outputs here*
 
 ---
 
-## 📈 Roadmap
-
-- [x] V4 Dynamic Layouts
-- [x] Character DNA Consistency
-- [x] Project Merging
-- [x] Smart Bubble Placement
-- [ ] Color Manga Mode
-- [ ] Panel Regeneration (Qwen-VL)
-- [ ] Multi-chapter Export
-
----
-
-## 🤝 Contributing
-
-Built by a 3rd year CSE student who got tired of AI art generators making inconsistent characters. PRs welcome.
-
----
-
-## 📜 License
-
-MIT License - Use it, break it, make something cool.
+3rd year CSE project. MIT license.
