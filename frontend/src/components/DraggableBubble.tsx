@@ -13,6 +13,7 @@ export interface BubbleData {
     fontSize?: number;
     fontFamily?: string;
     tailDirection?: "bottom" | "top" | "left" | "right";  // Arrow direction
+    speakerPosition?: "left" | "right" | "center" | "none";  // V4.8: LLM-specified speaker position
 }
 
 interface DraggableBubbleProps {
@@ -41,10 +42,11 @@ const BUBBLE_STYLES: Record<string, { bg: string, border: string, tail: string, 
     },
     shout: {
         bg: "bg-white",
-        border: "border-[3px] border-black", // Spiky will be CSS
+        border: "border-[4px] border-black", // Thicker border for impact
         tail: "",
-        textColor: "text-black font-black uppercase tracking-wide",
-        shape: "polygon(0% 15%, 15% 0%, 50% 10%, 85% 0%, 100% 15%, 90% 50%, 100% 85%, 85% 100%, 50% 90%, 15% 100%, 0% 85%, 10% 50%)",
+        textColor: "text-black font-black uppercase tracking-wider text-shadow",
+        // JJK-style aggressive spikes - deeper and more chaotic
+        shape: "polygon(5% 25%, 0% 10%, 12% 20%, 20% 0%, 25% 18%, 40% 5%, 50% 15%, 60% 5%, 75% 18%, 80% 0%, 88% 20%, 100% 10%, 95% 25%, 100% 45%, 95% 55%, 100% 75%, 95% 85%, 88% 80%, 80% 100%, 75% 82%, 60% 95%, 50% 85%, 40% 95%, 25% 82%, 20% 100%, 12% 80%, 5% 85%, 0% 75%, 5% 55%, 0% 45%)",
     },
     narrator: {
         // Manga caption box style - rectangular, positioned at edges
@@ -99,7 +101,25 @@ export default function DraggableBubble({
 
     // Get tail classes based on direction
     const getTailClasses = (): string => {
-        const direction = bubble.tailDirection || "bottom";
+        // V4.3/V4.8: Derive tailDirection from speakerPosition if not explicitly set
+        let direction = bubble.tailDirection;
+        if (!direction && bubble.speakerPosition) {
+            // If speaker is on left, point tail left; if right, point right
+            switch (bubble.speakerPosition) {
+                case "left":
+                    direction = "left";
+                    break;
+                case "right":
+                    direction = "right";
+                    break;
+                case "center":
+                    direction = "bottom";
+                    break;
+                default:
+                    direction = "bottom";
+            }
+        }
+        direction = direction || "bottom";
 
         // Speech and thought bubbles have tails, others don't
         if (!["speech", "thought"].includes(bubble.style)) {

@@ -48,13 +48,25 @@ export default function GeneratePage() {
     useEffect(() => {
         if (!jobId) return;
 
+        let retryCount = 0;
+        const maxRetries = 5;
+
         const pollStatus = async () => {
             try {
-                const response = await fetch(`http://localhost:8000/api/status/${jobId}`);
-                if (!response.ok) throw new Error("Failed to get status");
+                const response = await fetch(`http://localhost:8000/api/status/${jobId}`, {
+                    signal: AbortSignal.timeout(10000) // 10 second timeout
+                });
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        setError("Job not found. It may have been deleted.");
+                        return;
+                    }
+                    throw new Error("Failed to get status");
+                }
 
                 const data: JobStatus = await response.json();
                 setJob(data);
+                retryCount = 0; // Reset retry count on success
 
                 if (data.status === "completed") {
                     // Redirect to preview after short delay
@@ -66,26 +78,37 @@ export default function GeneratePage() {
                     setTimeout(pollStatus, 2000);
                 }
             } catch (err) {
-                setError("Failed to connect to backend");
+                retryCount++;
+                console.warn(`Status poll failed (attempt ${retryCount}/${maxRetries}):`, err);
+
+                if (retryCount < maxRetries) {
+                    // Retry with exponential backoff
+                    setTimeout(pollStatus, 1000 * retryCount);
+                } else {
+                    setError("Failed to connect to backend. Please check if the server is running.");
+                }
             }
         };
 
         pollStatus();
     }, [jobId, router]);
 
-    // Get panel grid dimensions
+    // Get panel grid dimensions (for preview purposes)
     const getPanelGrid = () => {
-        const layout = job?.layout || "2x2";
-        if (layout === "2x2") return { cols: 2, rows: 2 };
-        if (layout === "2x3") return { cols: 2, rows: 3 };
-        if (layout === "3x3") return { cols: 3, rows: 3 };
-        return { cols: 2, rows: 2 };
+        const layout = job?.layout || "dynamic";
+        // For dynamic layout, we don't know the exact grid - show flexible preview
+        if (layout === "dynamic") return { cols: 2, rows: 2, dynamic: true };
+        if (layout === "2x2") return { cols: 2, rows: 2, dynamic: false };
+        if (layout === "2x3") return { cols: 2, rows: 3, dynamic: false };
+        if (layout === "3x3") return { cols: 3, rows: 3, dynamic: false };
+        if (layout === "full") return { cols: 1, rows: 1, dynamic: false };
+        return { cols: 2, rows: 2, dynamic: true };
     };
 
     const grid = getPanelGrid();
 
-    // Calculate current panel based on completed previews
-    const completedPanels = (job?.panel_previews || []).filter(p => !!p).length;
+    // Calculate current panel based on completed previews (exclude "loading" placeholders)
+    const completedPanels = (job?.panel_previews || []).filter(p => p && p !== "loading").length;
     const currentPanelDisplay = Math.min(completedPanels + 1, job?.total_panels || 1);
 
     return (
@@ -152,10 +175,11 @@ export default function GeneratePage() {
                         </h3>
                         <div className="space-y-3">
                             {(job?.steps || [
-                                { name: "Story analyzed", status: "pending" },
+                                { name: "Story planning", status: "pending" },
                                 { name: "Generating panels", status: "pending" },
-                                { name: "Adding dialogue", status: "pending" },
                                 { name: "Composing pages", status: "pending" },
+                                { name: "Generating cover", status: "pending" },
+                                { name: "Finalizing", status: "pending" },
                             ]).map((step, idx) => (
                                 <div key={step.name} className="flex items-center gap-3">
                                     <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${step.status === "completed" ? "bg-[#38e07b]" :
@@ -232,53 +256,95 @@ export default function GeneratePage() {
                             Live Preview
                         </h3>
 
-                        {/* Panel Grid */}
-                        <div
-                            className="grid gap-2 aspect-[3/4] max-w-lg mx-auto"
-                            style={{
-                                gridTemplateColumns: `repeat(${grid.cols}, 1fr)`,
-                                gridTemplateRows: `repeat(${grid.rows}, 1fr)`
-                            }}
-                        >
-                            {Array.from({ length: (job?.total_panels || grid.cols * grid.rows) }).map((_, i) => {
-                                const panelNum = i + 1;
-                                const preview = job?.panel_previews?.[i];
-                                const isCompleted = !!preview;
-                                const isLoading = panelNum === currentPanelDisplay && !isCompleted && job?.status === "generating";
+                        {/* Panel Grid - V5 Sliding Window with Loading Skeletons */}
+                        <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
+                            {(() => {
+                                const allPanels = job?.panel_previews || [];
+                                const completedCount = allPanels.filter(p => p && p !== "loading").length;
 
-                                return (
-                                    <div
-                                        key={i}
-                                        className={`rounded-lg border-2 overflow-hidden flex items-center justify-center transition-all ${isLoading ? "border-[#38e07b] ring-4 ring-[#38e07b]/20 bg-[#16261e]" :
-                                            isCompleted ? "border-[#264532] bg-[#16261e]" :
-                                                "border-dashed border-white/10 bg-white/5"
-                                            }`}
-                                    >
-                                        {isCompleted && preview ? (
+                                // Sliding window: show last 6 items (including loading)
+                                // If we have completed panels, show mix of recent completed + upcoming loading
+                                const maxVisible = 6;
+                                let visiblePanels: { preview: string; index: number }[] = [];
+
+                                // Find the "window" - start from first loading or recent completed
+                                const firstLoadingIdx = allPanels.findIndex(p => p === "loading");
+                                let startIdx = Math.max(0, completedCount - 2); // Show 2 completed + rest loading
+
+                                if (firstLoadingIdx === -1) {
+                                    // All complete - show last 6
+                                    startIdx = Math.max(0, allPanels.length - maxVisible);
+                                }
+
+                                for (let i = startIdx; i < Math.min(startIdx + maxVisible, allPanels.length); i++) {
+                                    visiblePanels.push({ preview: allPanels[i], index: i });
+                                }
+
+                                return visiblePanels.map(({ preview, index }) => {
+                                    const isLoading = preview === "loading";
+                                    const isEmpty = !preview;
+
+                                    if (isLoading || isEmpty) {
+                                        // Loading skeleton with spinner
+                                        const isCurrentlyGenerating = index === completedCount;
+                                        return (
+                                            <div
+                                                key={index}
+                                                className={`rounded-xl overflow-hidden flex items-center justify-center transition-all duration-500 ${isCurrentlyGenerating
+                                                        ? "border-2 border-[#38e07b] ring-2 ring-[#38e07b]/30 bg-[#1a3326]"
+                                                        : "border border-white/10 bg-[#16261e]/50"
+                                                    }`}
+                                                style={{ aspectRatio: '1/1.2' }}
+                                            >
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <span className={`material-symbols-outlined text-2xl ${isCurrentlyGenerating ? "text-[#38e07b] animate-spin" : "text-white/20"
+                                                        }`}>
+                                                        {isCurrentlyGenerating ? "autorenew" : "image"}
+                                                    </span>
+                                                    <span className={`text-xs font-medium ${isCurrentlyGenerating ? "text-[#38e07b]" : "text-white/30"}`}>
+                                                        Panel {index + 1}
+                                                    </span>
+                                                    {isCurrentlyGenerating && (
+                                                        <span className="text-white/50 text-xs animate-pulse">Rendering...</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Completed panel with fade-in
+                                    return (
+                                        <div
+                                            key={index}
+                                            className="rounded-xl border-2 border-[#264532] bg-[#16261e] overflow-hidden animate-fade-in shadow-lg"
+                                            style={{ aspectRatio: '1/1.2' }}
+                                        >
                                             <img
                                                 src={`http://localhost:8000${preview}`}
-                                                alt={`Panel ${panelNum}`}
+                                                alt={`Panel ${index + 1}`}
                                                 className="w-full h-full object-cover"
                                             />
-                                        ) : isLoading ? (
-                                            <div className="flex flex-col items-center gap-2">
-                                                <span className="material-symbols-outlined text-[#38e07b] text-2xl animate-spin">autorenew</span>
-                                                <span className="text-white/50 text-xs">Rendering...</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col items-center gap-1 text-white/20">
-                                                <span className="material-symbols-outlined text-xl">hourglass_empty</span>
-                                                <span className="text-xs">Panel {panelNum}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                        </div>
+                                    );
+                                });
+                            })()}
                         </div>
 
-                        <p className="text-white/30 text-xs text-center mt-4">
-                            Preview is low resolution. Final output will be high quality.
-                        </p>
+                        {/* Panel count info */}
+                        <div className="mt-4 text-center space-y-1">
+                            <p className="text-white font-medium">
+                                <span className="text-[#38e07b]">{(job?.panel_previews || []).filter(p => p && p !== "loading").length}</span>
+                                <span className="text-white/50"> of </span>
+                                <span className="text-[#38e07b]">{job?.total_panels || "..."}</span>
+                                <span className="text-white/50"> panels complete</span>
+                            </p>
+                            {(job?.panel_previews?.length || 0) > 6 && (
+                                <p className="text-white/40 text-xs flex items-center justify-center gap-1">
+                                    <span className="material-symbols-outlined text-sm">view_carousel</span>
+                                    Showing recent panels (sliding window)
+                                </p>
+                            )}
+                        </div>
                     </div>
 
                     {/* Success - Auto redirect notice */}

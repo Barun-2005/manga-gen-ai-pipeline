@@ -15,6 +15,7 @@ This is the BRAIN of MangaGen - makes stories that make sense!
 import json
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -28,10 +29,11 @@ class StoryDirector:
     Intelligent story planning with FallbackLLM.
     
     Key Philosophy:
-    - Story pacing matters: 1 page = intro only, 5 pages = act 1, 10+ = full arc
+    - Story pacing is DYNAMIC: LLM analyzes story content to decide pacing
     - Characters need depth: AI adds supporting cast automatically
     - Dialogue tells the story: readers should understand plot from dialogue
     - Chapters continue: unless user says "complete", leave room for more
+    - Stable IDs: All entities use UUIDs for save/continue support
     """
     
     def __init__(self, api_key: Optional[str] = None):
@@ -46,7 +48,7 @@ class StoryDirector:
         characters: List[Dict],
         chapter_title: str,
         page_count: int,
-        panels_per_page: int,
+        panels_per_page: int,  # Can be None for V4 dynamic mode
         style: str,
         is_complete_story: bool = False
     ) -> Dict:
@@ -58,7 +60,7 @@ class StoryDirector:
             characters: List of user-defined characters [{name, appearance, personality}]
             chapter_title: Title for this chapter
             page_count: Number of pages to generate
-            panels_per_page: Panels per page (4 for 2x2, 6 for 2x3)
+            panels_per_page: Panels per page (4 for 2x2, 6 for 2x3), or None for V4 DYNAMIC mode
             style: 'color_anime' or 'bw_manga'
             is_complete_story: If True, wrap up story. If False, leave for continuation.
         
@@ -66,7 +68,16 @@ class StoryDirector:
             Complete chapter plan with all pages, panels, and dialogue
         """
         
-        total_panels = page_count * panels_per_page
+        # V4 Dynamic Mode: LLM decides panel count based on archetypes
+        is_dynamic_layout = panels_per_page is None
+        if is_dynamic_layout:
+            total_panels = None  # LLM will decide
+            panels_per_page_text = "DYNAMIC (You decide 1-6 panels per page based on the archetype you choose)"
+            total_panels_text = "DYNAMIC (Varies by archetype - see ARCHETYPE rules below)"
+        else:
+            total_panels = page_count * panels_per_page
+            panels_per_page_text = str(panels_per_page)
+            total_panels_text = str(total_panels)
         
         # Format character info
         char_info = "\n".join([
@@ -74,133 +85,306 @@ class StoryDirector:
             for c in characters
         ]) if characters else "No characters specified - create main characters based on the story."
         
-        # Determine story pacing based on page count
-        if page_count == 1:
-            pacing_guide = """
-SINGLE PAGE (4-6 panels): This is an INTRODUCTION only.
-- Panel 1-2: Establish setting and mood
-- Panel 3-4: Introduce main character(s) and hint at conflict
-- Panel 5-6: End with intrigue/cliffhanger (NOT resolution!)
-DO NOT try to complete the story. This is just the HOOK."""
-        elif page_count <= 3:
-            pacing_guide = f"""
-SHORT CHAPTER ({page_count} pages, {total_panels} panels): Show Act 1 only.
-- Page 1: Opening - establish world and characters
-- Page 2: Rising action - introduce the conflict/problem
-- Page 3: Tension peak - major obstacle or revelation
-END with a dramatic moment, NOT a resolution. Leave readers wanting more."""
-        elif page_count <= 5:
-            pacing_guide = f"""
-MEDIUM CHAPTER ({page_count} pages, {total_panels} panels): Show Act 1 + Act 2 beginning.
-- Pages 1-2: Opening - world building, character introduction
-- Pages 3-4: Rising action - conflict develops, stakes increase
-- Page 5: Major turning point or confrontation
-{"END with resolution and setup for next adventure." if is_complete_story else "END at the climax moment - leave the outcome uncertain."}"""
-        else:
-            pacing_guide = f"""
-FULL CHAPTER ({page_count} pages, {total_panels} panels): Complete story arc possible.
-- Pages 1-2: Opening - immersive world building, all characters introduced
-- Pages 3-{page_count//2}: Rising action - conflict escalates, relationships develop
-- Pages {page_count//2+1}-{page_count-1}: Climax - major confrontation, emotional peaks
-- Page {page_count}: {"Resolution - satisfying conclusion" if is_complete_story else "Aftermath - show consequences but leave threads open for continuation"}"""
+        # DYNAMIC PACING - Let LLM analyze the story prompt to decide pacing
+        # (Removed hardcoded "1 page = intro only" type templates)
+        
+        # Multi-chapter detection for 10+ pages
+        is_multi_chapter = page_count >= 10
+        chapter_guidance = ""
+        if is_multi_chapter:
+            estimated_chapters = max(2, page_count // 5)  # ~5 pages per chapter
+            chapter_guidance = f"""
+## 📚 MULTI-CHAPTER STORY (IMPORTANT!)
 
-        prompt = f"""You are a MASTER MANGA STORYTELLER. Create a complete chapter plan for a manga.
+You have {page_count} pages - this is enough for {estimated_chapters} chapters!
+
+**STRUCTURE YOUR RESPONSE AS MULTIPLE CHAPTERS:**
+1. Divide the story into {estimated_chapters} logical chapters
+2. Each chapter should have its own:
+   - **Dynamic chapter name** (NOT just "Chapter 1" - use descriptive names like "The Awakening", "First Blood", "Shadows Rising")
+   - Summary
+   - Cliffhanger ending (except final if complete)
+3. Pages should be grouped by chapter
+
+**CHAPTER PACING:**
+- Chapter 1: Introduction + inciting incident (~{page_count // estimated_chapters} pages)
+- Middle chapters: Rising action + complications
+- Final chapter: Climax + resolution (or major cliffhanger)
+"""
+        else:
+            chapter_guidance = f"""
+## 📖 SINGLE CHAPTER STORY
+
+This is a {page_count}-page chapter. Give it a **compelling, descriptive chapter name** that hints at the content.
+
+**DO NOT use generic names like:**
+- "Chapter 1" ❌
+- "The Beginning" ❌
+- "Introduction" ❌
+
+**USE evocative names like:**
+- "The Sage's Second Life" ✓
+- "Awakening in Shadows" ✓
+- "When Stars Fall" ✓
+"""
+
+        pacing_analysis = f"""
+## 📊 YOUR PACING TASK
+
+You have {page_count} pages ({total_panels} panels) to tell this story.
+{chapter_guidance}
+
+**ANALYZE the story prompt** and decide:
+1. What is the NATURAL SCOPE of this story segment?
+   - Is it a moment, a scene, a chapter, or an arc?
+2. Where should this segment END?
+   - Cliffhanger? Resolution? Mid-action? Emotional beat?
+3. How much can realistically FIT in {total_panels} panels?
+   - Don't cram 10 events into 5 pages
+   - Don't stretch 1 event across 10 pages
+
+**DO NOT follow rigid formulas.** Each story has unique pacing needs.
+- A 1-page story CAN be complete (slice of life moment)
+- A 10-page story CAN be just setup (epic fantasy prologue)
+- YOU decide based on the STORY CONTENT, not the PAGE COUNT.
+
+**IS THIS A CONTINUATION?** {"No - this is a fresh start." if not is_complete_story else "No - user wants a complete story arc."}
+"""
+
+        # Professional Manga Techniques (as GUIDANCE, not rigid rules)
+        manga_techniques = f"""
+## 🎨 MANGA STORYTELLING TECHNIQUES (Use as guidance)
+
+### Kishōtenketsu Framework (Flexible, not rigid!)
+Consider this Japanese 4-act structure:
+- **Ki (起)** Introduction: Set the scene
+- **Shō (承)** Development: Build on the introduction  
+- **Ten (転)** Twist: Something unexpected
+- **Ketsu (結)** Conclusion: Show result or leave hook
+
+For {total_panels_text} panels, you might allocate ~{page_count} panels per act (dynamic adjusts automatically).
+**BUT** - adapt this to YOUR story. Action may need more Ten. Drama may need more Shō.
+
+### "Ma" (間) - The Power of Pause
+- Include 1-2 quiet panels per page (no dialogue)
+- Use for: reactions, scenery, dramatic pauses
+- These let readers FEEL the emotions
+
+### Panel Density Guidance
+- Action scenes: MORE panels (creates urgency)
+- Emotional beats: FEWER panels (creates impact)
+- Dialogue exchanges: Medium density
+- Big reveals: Single large panel possible
+
+### What Makes a Page "Work"
+- Each page should have ONE clear focus/event
+- End pages on mini-cliffhangers when possible
+- Vary panel sizes for visual interest
+"""
+
+        # Context Reset (prevent ghost characters)
+        context_reset = """
+## ⚠️ FRESH STORY RULES (CRITICAL)
+- This is a BRAND NEW story. There is NO previous context.
+- ONLY use characters defined in "USER-PROVIDED CHARACTERS" below
+- If a scene seems familiar from another story, DISCARD IT
+- Create fresh scenes that match THIS story prompt ONLY
+- Any character not explicitly listed does NOT exist
+
+## 🎭 CHARACTER VISUAL DISTINCTION (CRITICAL!)
+Heroes and Villains/Antagonists MUST look visually distinct:
+
+**PROTAGONIST Visual Tags:**
+- Warm or neutral colors (if color): brown, blue, warm red
+- "Heroic" features: clear eyes, determined expression, dynamic pose
+- Practical outfit, relatable design
+
+**ANTAGONIST/VILLAIN Visual Tags (MUST DIFFER FROM HERO!):**
+- Cold or dark colors: silver, pale, dark purple, sickly green
+- Menacing features: sharp eyes, angular face, intimidating presence
+- Elaborate/sinister outfit, asymmetric design, scars, unusual markings
+- DIFFERENT hair style/color than protagonist!
+
+Example Distinction:
+- Hero: "spiky black hair, warm brown eyes, school uniform"
+- Villain: "slicked silver hair, cold red eyes, dark military coat, scar across face"
+
+## 💡 CREATIVITY BOOSTER (For Vague Prompts)
+If the user's prompt is SHORT or VAGUE (under 50 words), YOU must:
+1. INVENT a compelling setting (cyberpunk city, fantasy kingdom, modern academy)
+2. CREATE interesting character names and backstories
+3. ADD a twist or mystery element
+4. DEVELOP the conflict from vague hints
+
+Example:
+- User says: "A ninja story"
+- You create: "In Neo-Edo 2185, rogue cyber-ninja Hayate must steal data from the Shogun AI, but discovers his missing sister is a guard. Setting: neon-lit temple rooftop."
+
+NEVER be boring. ALWAYS add creative details!"""
+
+        # PHASE 1 DIRECTOR: Minimal dialogue rules (Writer handles the rest)
+        dialogue_rules = """
+## 💬 DIALOGUE (Basic placeholders - will be refined by Script Doctor)
+
+### PLACEHOLDER DIALOGUE ONLY
+- Include basic dialogue to show WHAT characters discuss
+- The Script Doctor will refine these into polished lines later
+- Focus on WHO speaks, not exact wording
+
+### VISUAL CONTINUITY (CRITICAL for image generation!)
+In each panel description, include:
+- What the character is HOLDING (weapon, item, bag)
+- What they are WEARING (if it changed)
+- Their POSITION (standing, sitting, running)
+- Previous panel context if relevant
+
+Example: "Kenji, still holding the glowing sword, faces the enemy directly"
+
+### BASIC FORMAT
+- speech: {{"character": "Name", "text": "placeholder", "type": "speech"}}
+- narrator: {{"type": "narrator", "text": "Scene context"}}
+- thought: {{"type": "thought", "character": "Name", "text": "thinking"}}"""
+
+        prompt = f"""You are a PROFESSIONAL MANGA STORYTELLER trained in Japanese manga techniques.
+
+{context_reset}
 
 ## STORY CONCEPT
 {story_prompt}
 
-## USER-PROVIDED CHARACTERS
+## USER-PROVIDED CHARACTERS (USE ONLY THESE)
 {char_info}
 
 ## CHAPTER INFO
 - Title: "{chapter_title}"
 - Pages: {page_count}
-- Panels per page: {panels_per_page}
-- Total panels: {total_panels}
+- Panels per page: {panels_per_page_text}
+- Total panels: {total_panels_text}
 - Style: {style}
-- Complete story: {"Yes, wrap it up" if is_complete_story else "No, this is chapter of an ongoing series"}
+- Complete story: {"Yes, wrap it up" if is_complete_story else "No, this is Chapter 1 of an ongoing series"}
 
-## STORY PACING REQUIREMENTS
-{pacing_guide}
+## STORY PACING
+{pacing_analysis}
+
+{manga_techniques}
+
+{dialogue_rules}
 
 ## YOUR TASKS
 
-1. **EXPAND THE CAST**: Add 1-3 supporting characters if the story needs them (mentors, rivals, sidekicks). Give them names, appearances, and roles.
+1. **EXPAND THE CAST**: Add 1-3 supporting characters if the story needs them. Give them names, appearances, and roles.
 
 2. **PLAN EACH PAGE**: For every page, describe:
-   - What happens on this page (2-3 sentences)
+   - What happens (2-3 sentences focusing on ONE main event)
    - The emotional beat (tense, sad, exciting, mysterious, etc.)
 
 3. **DESIGN EACH PANEL**: For every panel, provide:
    - Panel number (1 to {total_panels})
-   - **Camera shot**: Choose ONE: wide shot | medium shot | close-up | extreme close-up | over-the-shoulder | bird's eye view | worm's eye view
-   - **Camera angle**: Choose ONE: straight-on | dutch angle (tilted) | low angle (looking up) | high angle (looking down)
-   - **Composition**: Choose ONE: rule of thirds | center frame | dynamic diagonal | symmetrical
+   - **Camera shot**: wide shot | medium shot | close-up | extreme close-up | over-the-shoulder | bird's eye view | worm's eye view
+   - **Camera angle**: straight-on | dutch angle | low angle | high angle
+   - **Composition**: rule of thirds | center frame | dynamic diagonal | symmetrical
    - **Lighting/Mood**: dramatic shadows | soft lighting | harsh contrast | backlit | rim light | moody | bright
-   - **Visual description**: Use COMMA-SEPARATED TAGS for image generation, NOT prose sentences!
-     * Format: "character action, environment detail, mood/atmosphere, visual style tags"
-     * Example GOOD: "Akira running through alley, neon signs, rain, motion blur, dramatic shadows{', grayscale, screentone' if style == 'bw_manga' else ', vibrant colors, cel shading'}"
-     * Example BAD: "Akira is running through a dark alley while it's raining"
+   - **Visual description**: NATURAL LANGUAGE SENTENCE describing the scene
+     * Z-Image format: "A [character] [action] in a [location], [mood/atmosphere]"
+     * Example: "A weathered samurai with spiky black hair draws his katana in a rain-soaked alley, dramatic shadows"
+     * Include style: {'black and white manga style, ink lineart, high contrast' if style == 'bw_manga' else 'vibrant anime style, cel shading'}
+   - **style_tags**: Danbooru tags for Animagine refinement (ACTION pages only)
+     * Format: "1boy, spiky_hair, katana, dynamic_pose, action_lines, rain"
    - Characters present: List character names
-   - Dialogue: MEANINGFUL lines that tell the story (max 2 speech bubbles per panel)
+   - Dialogue: Use the format specified above (speech/thought/narrator)
 
-4. **VISUAL DESCRIPTION RULES**:
-   - **USE TAGS, NOT SENTENCES**: Comma-separated keywords only
-   - **Always include style tags**: {'"manga style, monochrome, ink lineart, screentone, high contrast"' if style == 'bw_manga' else '"anime style, vibrant colors, cel shading, studio quality"'}
-   - **Include camera info**: Start with shot type + angle (e.g., "close-up, dutch angle")
-   - **Add mood/lighting**: "dramatic shadows", "rim light", "moody atmosphere", etc.
-   - **Specify action clearly**: "character running", "character shocked expression", "character reaching out"
-   - **Include environment**: "urban alley", "rooftop at sunset", "classroom interior", etc.
-   - **Avoid THESE in descriptions**: text, dialogue bubbles, watermarks (those go in negative prompts)
+4. **INCLUDE "MA" PANELS**: At least 1 per page should be quiet (no dialogue) for emotional impact.
 
-5. **DIALOGUE RULES**:
-   - Dialogue should tell the story - a reader should understand the plot from dialogue alone
-   - Keep lines SHORT (max 15 words)
-   - Vary styles: speech, thought, shout, whisper
-   - Not every panel needs dialogue - let some visuals speak
-   - {"For B/W manga: describe in grayscale terms, no colors" if style == "bw_manga" else "For color anime: include vivid color descriptions"}
+## PAGE ARCHETYPES (CRITICAL - USE THESE!)
+Each page MUST have an archetype that determines its layout:
+
+- **EXPOSITION**: World building, establishing shots, new locations
+  → Use templates: expo_1splash (1 panel), expo_1big_3small (4 panels), expo_2wide_2small (4 panels)
+  → MUST use WIDE or SPLASH panels for big environments - no tiny panels for cities!
+  
+- **DIALOGUE**: Character conversations, emotional exchanges  
+  → Use templates: talk_5panel (5 panels), talk_6panel_grid (6 panels), talk_4panel_focus (4 panels)
+  
+- **ACTION**: Fights, chases, intense moments
+  → Use templates: action_2slant (2 panels), action_3dynamic (3 panels), action_panorama (3 panels)
+  
+- **REVEAL**: Plot twists, dramatic reveals
+  → Use templates: reveal_fullpage (1 panel), reveal_buildup (4 panels)
+  
+- **CLIFFHANGER**: Chapter ending, suspense
+  → Use templates: cliff_fade (3 panels), cliff_split (3 panels)
+
+**Panel count MUST match the template requirement!**
 
 ## OUTPUT FORMAT (JSON only, no markdown)
 {{
+  "manga_title": "A catchy, marketable manga series name (2-5 words, like 'Starbound Chronicles', 'Shadow Academy', 'Crimson Hearts')",
   "chapter_title": "{chapter_title}",
   "summary": "2-3 sentence chapter summary",
+  "cover_prompt": "COMMA-SEPARATED TAGS for cover page image: main character(s) in dramatic pose, key visual element from story, title area at top, {'manga style, monochrome, high contrast' if style == 'bw_manga' else 'anime style, vibrant colors'}, cover art quality",
   "characters": [
     {{
       "name": "Character Name",
-      "appearance": "Detailed visual description for consistent image generation",
+      "appearance": "Detailed visual description for consistent image generation - NO COLOR WORDS for B/W style",
       "personality": "Brief personality traits",
-      "role": "protagonist/antagonist/mentor/sidekick/etc"
+      "role": "protagonist/antagonist/mentor/sidekick/etc",
+      "visual_prompt": "COMMA-SEPARATED TAGS for image gen: age, hair, eyes, outfit, key features",
+      "locked_traits": ["hair_color", "eye_color", "age_appearance"],
+      "arc_state": "Current emotional/story state of this character"
     }}
   ],
   "pages": [
     {{
       "page_number": 1,
-      "page_summary": "What happens on this page",
+      "chapter_number": 1,
+      "archetype": "EXPOSITION",
+      "layout_template": "expo_1big_3small",
+      "page_summary": "ONE main event that happens on this page",
       "emotional_beat": "tense/exciting/sad/mysterious/hopeful/etc",
       "panels": [
         {{
           "panel_number": 1,
-          "shot_type": "wide shot|medium shot|close-up|extreme close-up|over-the-shoulder|bird's eye|worm's eye",
-          "camera_angle": "straight-on|dutch angle|low angle|high angle",
-          "composition": "rule of thirds|center frame|dynamic diagonal|symmetrical",
-          "lighting_mood": "dramatic shadows|soft lighting|harsh contrast|backlit|rim light|moody|bright",
-          "description": "COMMA-SEPARATED TAGS (not prose!), character action, environment, mood, style tags",
+          "shot_type": "wide shot",
+          "camera_angle": "straight-on",
+          "composition": "rule of thirds",
+          "lighting_mood": "moody",
+          "description": "A weathered samurai with spiky black hair stands in a rain-soaked alley, dramatic shadows, black and white manga style",
+          "style_tags": "1boy, spiky_hair, samurai, rain, alley, dramatic_lighting, monochrome",
           "characters_present": ["Character Name"],
           "dialogue": [
-            {{"character": "Name", "text": "What they say", "style": "speech|thought|shout|whisper"}}
+            {{"character": "Name", "text": "placeholder dialogue", "type": "speech", "style": "speech", "speaker_position": "left"}},
+            {{"type": "narrator", "text": "Scene context", "style": "narrator", "speaker_position": "center"}}
           ]
         }}
       ]
     }}
   ],
-  "cliffhanger": "How this chapter ends - tease what's next (only if not complete story)",
-  "next_chapter_hook": "Brief idea for next chapter continuation"
+  "cliffhanger": "How this chapter ends - tease what's next",
+  "next_chapter_hook": "Brief idea for next chapter"
 }}
 
-Create a compelling, well-paced manga chapter now:"""
+Remember:
+- MAX 3 plot beats for {page_count} pages
+- Include narrator boxes for time/place/context
+- Multiple characters should CONVERSE, not just monologue
+- Include 1 "Ma" (quiet) panel per page
+- Make dialogue reveal CHARACTER and PLOT, not just state facts
+- SPEAKER_POSITION: "left" if character is on left of panel, "right" if on right, "center" if centered
+
+## CRITICAL COACHING (LAYOUT FOCUS):
+
+**VARIETY RULE**: Do NOT use the same layout_template two pages in a row!
+  - If Page 1 uses "expo_1big_3small", Page 2 MUST use something different
+  - High-energy ACTION scenes should PREFER dynamic layouts (action_2slant, action_panorama)
+  - All layouts MUST use 100% of the page space - NO GAPS!
+
+**PANEL COUNT**: Match the template's panel_count exactly.
+
+Create a visually compelling manga chapter now (dialogue will be polished by Script Doctor):"""
+
 
         print(f"🧠 Story Director: Planning chapter...")
-        print(f"   Pages: {page_count}, Panels: {total_panels}")
+        print(f"   Pages: {page_count}, Layout: {'DYNAMIC' if is_dynamic_layout else f'{panels_per_page} panels/page'}")
         print(f"   Story: {story_prompt[:100]}...")
         
         try:
@@ -215,15 +399,236 @@ Create a compelling, well-paced manga chapter now:"""
             
             chapter_plan = json.loads(content.strip())
             
+            # Assign stable UUIDs to all entities (for save/continue support)
+            chapter_plan = self._assign_stable_ids(chapter_plan)
+            
             print(f"✅ Chapter planned: '{chapter_plan.get('chapter_title', chapter_title)}'")
             print(f"   Characters: {len(chapter_plan.get('characters', []))}")
             print(f"   Pages: {len(chapter_plan.get('pages', []))}")
+            
+            # V4 DEBUG: Show LLM's archetype/layout choices
+            if is_dynamic_layout:
+                print(f"\n📐 V4 DYNAMIC LAYOUT - LLM's choices:")
+                for page in chapter_plan.get('pages', []):
+                    pg_num = page.get('page_number', '?')
+                    archetype = page.get('archetype', 'NOT SET')
+                    template = page.get('layout_template', 'NOT SET')
+                    panel_count = len(page.get('panels', []))
+                    print(f"   Page {pg_num}: {archetype} → {template} ({panel_count} panels)")
+            
+            # PHASE 2: THE WRITER (Script Doctor)
+            # Refine dialogue without touching visual fields
+            chapter_plan = self.refine_dialogue(chapter_plan)
             
             return chapter_plan
             
         except Exception as e:
             print(f"❌ Story Director error: {e}")
             raise
+    
+    def _assign_stable_ids(self, chapter_plan: Dict) -> Dict:
+        """
+        Assign stable UUIDs to all entities in the chapter plan.
+        
+        This enables save/continue functionality by giving each
+        chapter, page, panel, and dialogue a unique identifier.
+        """
+        # Chapter-level ID
+        chapter_plan['chapter_id'] = str(uuid.uuid4())[:8]
+        
+        # Character IDs
+        for char in chapter_plan.get('characters', []):
+            char['character_id'] = f"char_{uuid.uuid4().hex[:8]}"
+        
+        # Page and panel IDs
+        for page in chapter_plan.get('pages', []):
+            page['page_id'] = f"page_{uuid.uuid4().hex[:8]}"
+            
+            for panel in page.get('panels', []):
+                panel['panel_id'] = f"panel_{uuid.uuid4().hex[:8]}"
+                
+                # Dialogue IDs
+                for dialogue in panel.get('dialogue', []):
+                    dialogue['dialogue_id'] = f"dlg_{uuid.uuid4().hex[:8]}"
+        
+        return chapter_plan
+    
+    def refine_dialogue(self, chapter_plan: Dict) -> Dict:
+        """
+        PHASE 2: THE WRITER (Script Doctor)
+        
+        Takes the visual-focused chapter plan from Phase 1 and refines ONLY the dialogue.
+        
+        CONSTRAINTS (Strictly Enforced):
+        - CANNOT add/remove panels
+        - CANNOT change layout_template
+        - CANNOT change visual_tags or character DNA
+        - CAN ONLY modify dialogue[] arrays
+        
+        Returns:
+            Same chapter_plan with refined dialogue
+        """
+        
+        # Extract essential info for the Writer
+        story_context = chapter_plan.get('summary', '')
+        characters = chapter_plan.get('characters', [])
+        pages = chapter_plan.get('pages', [])
+        
+        if not pages:
+            return chapter_plan
+        
+        # Format character voices for the Writer
+        char_voices = "\n".join([
+            f"- {c.get('name', 'Unknown')}: {c.get('personality', 'no personality defined')} | Role: {c.get('role', 'unknown')}"
+            for c in characters
+        ])
+        
+        # Build the minimal scene context for dialogue refinement
+        scene_summaries = []
+        for page in pages:
+            pg_num = page.get('page_number', '?')
+            pg_summary = page.get('page_summary', 'No summary')
+            panels_info = []
+            for panel in page.get('panels', []):
+                panel_num = panel.get('panel_number', '?')
+                desc = panel.get('description', '')[:100]
+                chars = panel.get('characters_present', [])
+                current_dialogue = panel.get('dialogue', [])
+                panels_info.append({
+                    'panel_number': panel_num,
+                    'description': desc,
+                    'characters': chars,
+                    'dialogue_count': len(current_dialogue)
+                })
+            scene_summaries.append({
+                'page': pg_num,
+                'summary': pg_summary,
+                'panels': panels_info
+            })
+        
+        writer_prompt = f"""You are a MANGA SCRIPT DOCTOR specializing in dialogue.
+
+## STORY CONTEXT
+{story_context}
+
+## CHARACTER VOICES (Give each distinct personality!)
+{char_voices}
+
+## SCENE BREAKDOWN
+{json.dumps(scene_summaries, indent=2)}
+
+## YOUR TASK: REWRITE ALL DIALOGUE
+
+You must return a JSON object with ONLY the dialogue arrays for each panel.
+
+### RULES (CRITICAL - READ CAREFULLY!):
+
+1. **DISTINCT VOICES**: Each character speaks differently
+   - A hot-headed fighter uses short, punchy sentences
+   - A wise mentor speaks in metaphors and measured tones
+   - A nervous sidekick stutters and asks questions
+   - NO GENERIC "AI SPEAK" - make it feel human!
+
+2. **SHOW, DON'T TELL**: Never summarize emotions
+   ❌ BAD: "I'm so angry right now!"
+   ✅ GOOD: "You... you DARE?!" (style: "shout")
+
+3. **BUBBLE STYLE IS MANDATORY**: Every dialogue MUST have a style field
+   - "speech" = normal talking
+   - "shout" = yelling/anger/commands (spiky bubble)
+   - "thought" = inner thoughts (cloud bubble)
+   - "whisper" = secrets/quiet (dashed bubble)
+   - "narrator" = scene setting (caption box)
+
+4. **NARRATOR BOXES REQUIRED**: Each page MUST have at least ONE narrator
+   - Page 1: Establish location/time
+   - Other pages: Transitions, time skips, internal context
+
+5. **SPEAKER POSITION**: Set based on character placement
+   - "left" if character is on left of panel
+   - "right" if character is on right
+   - "center" for narrators or centered characters
+
+6. **3-5 EXCHANGES MINIMUM**: Real conversations, not monologues!
+
+## OUTPUT FORMAT (JSON ONLY)
+
+Return EXACTLY this structure:
+{{
+  "pages": [
+    {{
+      "page_number": 1,
+      "panels": [
+        {{
+          "panel_number": 1,
+          "dialogue": [
+            {{"character": "Name", "text": "Actual line", "type": "speech", "style": "speech", "speaker_position": "left"}},
+            {{"type": "narrator", "text": "Scene context", "style": "narrator", "speaker_position": "center"}}
+          ]
+        }}
+      ]
+    }}
+  ]
+}}
+
+CRITICAL: Return ONLY valid JSON. No markdown, no explanation. Just the dialogue data."""
+
+        print(f"\n✍️ Script Doctor: Refining dialogue...")
+        
+        try:
+            # Use LLM for dialogue refinement
+            content = self.llm.generate(writer_prompt, max_tokens=4000)
+            
+            # Extract JSON from response
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+            
+            dialogue_data = json.loads(content.strip())
+            
+            # Merge refined dialogue back into chapter_plan (preserving all visual fields!)
+            refined_pages = dialogue_data.get('pages', [])
+            for refined_page in refined_pages:
+                pg_num = refined_page.get('page_number')
+                # Find matching page in original
+                for orig_page in chapter_plan.get('pages', []):
+                    if orig_page.get('page_number') == pg_num:
+                        for refined_panel in refined_page.get('panels', []):
+                            panel_num = refined_panel.get('panel_number')
+                            # Find matching panel
+                            for orig_panel in orig_page.get('panels', []):
+                                if orig_panel.get('panel_number') == panel_num:
+                                    # ONLY update dialogue - preserve everything else!
+                                    if 'dialogue' in refined_panel:
+                                        orig_panel['dialogue'] = refined_panel['dialogue']
+                                    break
+                        break
+            
+            # Count results
+            total_dialogues = 0
+            narrator_count = 0
+            style_count = {'speech': 0, 'shout': 0, 'thought': 0, 'whisper': 0, 'narrator': 0}
+            for page in chapter_plan.get('pages', []):
+                for panel in page.get('panels', []):
+                    for dlg in panel.get('dialogue', []):
+                        total_dialogues += 1
+                        style = dlg.get('style', 'speech')
+                        if style in style_count:
+                            style_count[style] += 1
+                        if dlg.get('type') == 'narrator':
+                            narrator_count += 1
+            
+            print(f"✅ Dialogue refined: {total_dialogues} bubbles")
+            print(f"   Styles: {style_count}")
+            print(f"   Narrators: {narrator_count}")
+            
+            return chapter_plan
+            
+        except Exception as e:
+            print(f"⚠️ Script Doctor failed (using original dialogue): {e}")
+            # Return original plan unchanged if refinement fails
+            return chapter_plan
     
     def enhance_prompt(self, user_prompt: str) -> str:
         """

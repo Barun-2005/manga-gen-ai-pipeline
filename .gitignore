@@ -1,43 +1,77 @@
+# V4.5 MangaGen - .gitignore
 
-# Python
-__pycache__/
-*.pyc
-venv/
-.pytest_cache/
-
-# Node
-node_modules/
-.next/
-frontend/.next/
-frontend/node_modules/
-
-# Environment
-.env
-.env.local
-*.env
-
-# Outputs
+# ========================================
+# Generated Content - DO NOT COMMIT
+# ========================================
 outputs/
 *.pdf
-temp/
-logs/
+*.png
+!frontend/public/*.png
 
-# IDE
+# ========================================
+# Python
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# ========================================
+# Node.js / Frontend
+# ========================================
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.npm/
+
+# ========================================
+# Environment & Secrets - NEVER COMMIT
+# ========================================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# ========================================
+# IDE & OS
+# ========================================
 .vscode/
 .idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-# Agent
-.gemini/
-.agent/
-brain/
+# ========================================
+# ComfyUI - Large Models
+# ========================================
+ComfyUI/models/
+ComfyUI/custom_nodes/
+ComfyUI/output/
+ComfyUI/input/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
 
-# Reference materials (keep local, not in repo)
-archive/
-stitch_ui/
-docs/
-*.docx
+# ========================================
+# Legacy Backup
+# ========================================
+_legacy_backup/
 
-# Internal docs (development use only)
-TESTING.md
-PRODUCTION.md
+# ========================================
+# Misc
+# ========================================
+*.log
+*.tmp
+*.bak
 .cache/

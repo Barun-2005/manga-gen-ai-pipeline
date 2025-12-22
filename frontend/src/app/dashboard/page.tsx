@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 interface Project {
     job_id: string;
-    title: string;
+    manga_title?: string;  // Series name (LLM generated)
+    title: string;         // Chapter title
     pages: number;
     style: string;
     created_at: string;
@@ -45,6 +48,11 @@ export default function DashboardPage() {
         GEMINI_API_KEY: ""
     });
 
+    // Delete confirmation modal states
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
     // Load settings
     useEffect(() => {
         const storedKeys = localStorage.getItem("mangagen_api_keys");
@@ -77,8 +85,8 @@ export default function DashboardPage() {
 
             if (response.ok) {
                 const data = await response.json();
-                // Navigate to the new job's preview
-                router.push(`/preview/${data.job_id}`);
+                // Navigate to generation progress page (not preview!)
+                router.push(`/generate/${data.job_id}`);
             } else {
                 const err = await response.json();
                 alert(err.detail || "Failed to start continuation");
@@ -97,6 +105,39 @@ export default function DashboardPage() {
         setContinuePages(3);
         setContinueDirection("");
         setShowContinueModal(true);
+    };
+
+    // V4: Open delete confirmation modal
+    const openDeleteModal = (project: Project) => {
+        setProjectToDelete(project);
+        setShowDeleteModal(true);
+    };
+
+    // V4: Confirm and delete project
+    const confirmDelete = async () => {
+        if (!projectToDelete) return;
+
+        setDeleting(true);
+        try {
+            const response = await fetch(`${API_URL}/api/projects/${projectToDelete.job_id}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                setProjects(prev => prev.filter(p => p.job_id !== projectToDelete.job_id));
+                console.log(`🗑️ Deleted project: ${projectToDelete.job_id}`);
+                setShowDeleteModal(false);
+                setProjectToDelete(null);
+            } else {
+                const err = await response.json();
+                alert(err.detail || "Failed to delete project");
+            }
+        } catch (error) {
+            console.error("Delete failed:", error);
+            alert("Network error. Please try again.");
+        } finally {
+            setDeleting(false);
+        }
     };
 
     // Load user from localStorage
@@ -374,7 +415,7 @@ export default function DashboardPage() {
                                     <div className="relative aspect-[3/4] w-full overflow-hidden bg-gradient-to-br from-[#264532] to-[#16261e]">
                                         {project.cover_url ? (
                                             <img
-                                                src={project.cover_url}
+                                                src={`http://localhost:8000${project.cover_url}`}
                                                 alt={project.title}
                                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                             />
@@ -388,7 +429,7 @@ export default function DashboardPage() {
                                         {/* Page Count Badge */}
                                         <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 flex items-center gap-1">
                                             <span className="material-symbols-outlined text-[14px] text-[#38e07b]">layers</span>
-                                            <span className="text-xs font-medium text-white">{project.pages} Pgs</span>
+                                            <span className="text-xs font-medium text-white">{Array.isArray(project.pages) ? project.pages.length : project.pages} Pgs</span>
                                         </div>
 
                                         {/* Style Badge */}
@@ -404,8 +445,13 @@ export default function DashboardPage() {
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <h3 className="text-white font-bold text-lg leading-tight group-hover:text-[#38e07b] transition-colors">
-                                                    {project.title}
+                                                    {project.manga_title || project.title}
                                                 </h3>
+                                                {project.manga_title && project.manga_title !== project.title && (
+                                                    <p className="text-gray-400 text-xs mt-0.5">
+                                                        Ch. 1: {project.title}
+                                                    </p>
+                                                )}
                                                 <p className="text-gray-500 text-xs mt-1">
                                                     Edited {getTimeAgo(project.updated_at)}
                                                 </p>
@@ -431,7 +477,11 @@ export default function DashboardPage() {
                                             >
                                                 <span className="material-symbols-outlined text-[18px]">add</span>
                                             </button>
-                                            <button className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-red-500/20 hover:text-red-500 text-gray-400 transition-all">
+                                            <button
+                                                onClick={() => openDeleteModal(project)}
+                                                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-red-500/20 hover:text-red-500 text-gray-400 transition-all"
+                                                title="Delete Project"
+                                            >
                                                 <span className="material-symbols-outlined text-[18px]">delete</span>
                                             </button>
                                         </div>
@@ -519,6 +569,80 @@ export default function DashboardPage() {
                                     <>
                                         <span className="material-symbols-outlined text-lg">auto_awesome</span>
                                         Generate {continuePages} Pages
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal - Beautiful danger theme */}
+            {showDeleteModal && projectToDelete && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+                    <div className="bg-gradient-to-b from-[#1a1a2e] to-[#16161a] rounded-2xl p-8 max-w-md w-full mx-4 border border-red-500/30 shadow-[0_0_60px_rgba(239,68,68,0.2)]">
+                        {/* Danger icon */}
+                        <div className="flex flex-col items-center mb-6">
+                            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-4">
+                                <span className="material-symbols-outlined text-4xl text-red-500">warning</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white text-center">Delete Project?</h3>
+                            <p className="text-gray-400 text-center mt-1">
+                                &quot;{projectToDelete.manga_title || projectToDelete.title}&quot;
+                            </p>
+                        </div>
+
+                        {/* Warning content */}
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6">
+                            <p className="text-red-400 text-sm text-center mb-3">
+                                This will permanently delete:
+                            </p>
+                            <ul className="text-gray-400 text-sm space-y-1">
+                                <li className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-red-400 text-base">image</span>
+                                    All pages and panel images
+                                </li>
+                                <li className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-red-400 text-base">chat_bubble</span>
+                                    All dialogues and bubbles
+                                </li>
+                                <li className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-red-400 text-base">folder_delete</span>
+                                    The entire project folder
+                                </li>
+                            </ul>
+                        </div>
+
+                        <p className="text-center text-gray-500 text-xs mb-6">
+                            ⚠️ This action cannot be undone
+                        </p>
+
+                        {/* Action buttons */}
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowDeleteModal(false);
+                                    setProjectToDelete(null);
+                                }}
+                                disabled={deleting}
+                                className="flex-1 py-3 rounded-xl border border-white/20 text-white hover:bg-white/5 transition-all disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={deleting}
+                                className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <span className="material-symbols-outlined animate-spin text-lg">sync</span>
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined text-lg">delete_forever</span>
+                                        Delete Forever
                                     </>
                                 )}
                             </button>

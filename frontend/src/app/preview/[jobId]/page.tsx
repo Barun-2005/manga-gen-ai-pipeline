@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import DialogueLayer, { BubbleData } from "@/components/DialogueLayer";
+import StoryViewer from "@/components/StoryViewer";
 
 interface DialogueBubble {
     id: string;
@@ -75,6 +76,19 @@ export default function PreviewPage() {
     const [saving, setSaving] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error", text: string } | null>(null);
+
+    // Story Viewer panel state
+    const [showStoryPanel, setShowStoryPanel] = useState(true);
+
+    // Dialogue regeneration state
+    const [regeneratingDialogue, setRegeneratingDialogue] = useState(false);
+    const [dialogueStyleHint, setDialogueStyleHint] = useState("");
+
+    // Editable titles state
+    const [mangaTitle, setMangaTitle] = useState("");
+    const [chapterTitle, setChapterTitle] = useState("");
+    const [editingMangaTitle, setEditingMangaTitle] = useState(false);
+    const [editingChapterTitle, setEditingChapterTitle] = useState(false);
 
     // Dialogues state: Map of panelId -> BubbleData[]
     const [panelDialogues, setPanelDialogues] = useState<Record<string, BubbleData[]>>({});
@@ -231,7 +245,55 @@ export default function PreviewPage() {
         };
     };
     const grid = getGridDimensions();
-    const totalPanels = grid.cols * grid.rows;
+
+    // V4: Get actual panel geometry from page data (with fallback to grid calculation)
+    const getPanelGeometry = (): Array<{ x: number; y: number; w: number; h: number }> => {
+        const pages = job?.result?.pages || [];
+        const currentPageData = pages[currentPage - 1];
+
+        if (!currentPageData) {
+            // Fallback to equal grid
+            return Array.from({ length: grid.cols * grid.rows }, (_, idx) => ({
+                x: (idx % grid.cols) * (100 / grid.cols),
+                y: Math.floor(idx / grid.cols) * (100 / grid.rows),
+                w: 100 / grid.cols,
+                h: 100 / grid.rows
+            }));
+        }
+
+        // Try to read panels array with x,y,w,h from V4 backend
+        const panels = (currentPageData as any).panels || [];
+        if (panels.length > 0 && panels[0]?.w !== undefined) {
+            // V4: Use actual panel geometry from layout template
+            return panels.map((panel: any) => ({
+                x: panel.x ?? 0,
+                y: panel.y ?? 0,
+                w: panel.w ?? 50,
+                h: panel.h ?? 50
+            }));
+        }
+
+        // Fallback to equal grid based on panel count
+        const panelCount = panels.length || (grid.cols * grid.rows);
+        const cols = Math.ceil(Math.sqrt(panelCount));
+        const rows = Math.ceil(panelCount / cols);
+        return Array.from({ length: panelCount }, (_, idx) => ({
+            x: (idx % cols) * (100 / cols),
+            y: Math.floor(idx / cols) * (100 / rows),
+            w: 100 / cols,
+            h: 100 / rows
+        }));
+    };
+
+    const panelGeometry = getPanelGeometry();
+    const totalPanels = panelGeometry.length;
+
+    // V4 DEBUG: Log panel geometry to verify values
+    useEffect(() => {
+        if (panelGeometry.length > 0) {
+            console.log(`📐 Panel Geometry for Page ${currentPage}:`, panelGeometry);
+        }
+    }, [currentPage, panelGeometry.length]);
 
     useEffect(() => {
         if (!jobId) return;
@@ -242,6 +304,26 @@ export default function PreviewPage() {
                 if (response.ok) {
                     const data = await response.json();
                     setJob(data);
+
+                    // Initialize title states from result
+                    if (data.result) {
+                        setMangaTitle(data.result.manga_title || data.result.title || "Untitled");
+                        setChapterTitle(data.result.title || "Chapter 1");
+                    }
+
+                    // Also fetch saved dialogues if this is a saved project
+                    try {
+                        const dialogueResponse = await fetch(`http://localhost:8000/api/projects/${jobId}/dialogues`);
+                        if (dialogueResponse.ok) {
+                            const dialogueData = await dialogueResponse.json();
+                            if (dialogueData.dialogues && Object.keys(dialogueData.dialogues).length > 0) {
+                                console.log("📝 Loaded saved dialogues:", Object.keys(dialogueData.dialogues).length, "panels");
+                                setPanelDialogues(dialogueData.dialogues);
+                            }
+                        }
+                    } catch (dialogueErr) {
+                        console.log("No saved dialogues found (normal for new projects)");
+                    }
                 }
             } catch (err) {
                 console.error("Failed to fetch job");
@@ -382,7 +464,8 @@ export default function PreviewPage() {
                 },
                 body: JSON.stringify({
                     job_id: jobId,
-                    title: job?.result?.title || "Untitled Manga",
+                    manga_title: mangaTitle || job?.result?.manga_title || job?.result?.title || "Untitled Manga",
+                    title: chapterTitle || job?.result?.title || "Chapter 1",
                     dialogues: panelDialogues  // All dialogue positions and text
                 })
             });
@@ -440,6 +523,53 @@ export default function PreviewPage() {
         }
     };
 
+    // Handle dialogue regeneration (V3 Phase 4)
+    const handleRegenerateDialogue = async () => {
+        if (selectedPanel === null) return;
+        setRegeneratingDialogue(true);
+
+        try {
+            const response = await fetch("http://localhost:8000/api/dialogues/regenerate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    job_id: jobId,
+                    page: currentPage,
+                    panel: selectedPanel + 1, // API uses 1-indexed panels
+                    style_hint: dialogueStyleHint || undefined
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.new_dialogues) {
+                    // Convert API response to BubbleData format
+                    const panelId = `page-${currentPage}-panel-${selectedPanel}`;
+                    const newBubbles: BubbleData[] = data.new_dialogues.map((dlg: any, idx: number) => ({
+                        id: dlg.dialogue_id || `bubble-${Date.now()}-${idx}`,
+                        text: dlg.text,
+                        x: 10 + (idx * 15) % 60, // Space out bubbles
+                        y: 10 + (idx * 20) % 50,
+                        style: dlg.type || "speech",
+                        character: dlg.character,
+                        fontSize: 14,
+                        fontFamily: "Manga Sans"
+                    }));
+
+                    handleDialoguesChange(panelId, newBubbles);
+                    console.log(`✅ Regenerated ${newBubbles.length} dialogues using ${data.llm_used}`);
+                }
+            } else {
+                console.error("Dialogue regeneration failed");
+            }
+        } catch (err) {
+            console.error("Dialogue regeneration error:", err);
+        } finally {
+            setRegeneratingDialogue(false);
+            setDialogueStyleHint("");
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-[#0a110e] flex items-center justify-center">
@@ -463,11 +593,48 @@ export default function PreviewPage() {
                     <Link href="/" className="flex size-8 items-center justify-center rounded-lg bg-[#38e07b]/20 text-[#38e07b]">
                         <span className="material-symbols-outlined">auto_stories</span>
                     </Link>
-                    <div className="flex flex-col">
-                        <h2 className="text-base font-bold leading-tight text-white">
-                            {job?.result?.title || "Untitled Project"}
-                        </h2>
-                        <span className="text-xs text-white/50">Chapter 1 • {totalPages} pages</span>
+                    <div className="flex flex-col gap-0.5">
+                        {/* Editable Manga Title */}
+                        {editingMangaTitle ? (
+                            <input
+                                type="text"
+                                value={mangaTitle}
+                                onChange={(e) => setMangaTitle(e.target.value)}
+                                onBlur={() => setEditingMangaTitle(false)}
+                                onKeyDown={(e) => e.key === "Enter" && setEditingMangaTitle(false)}
+                                className="bg-transparent text-base font-bold text-white border-b border-[#38e07b] outline-none px-1 -ml-1"
+                                autoFocus
+                            />
+                        ) : (
+                            <h2
+                                onClick={() => setEditingMangaTitle(true)}
+                                className="text-base font-bold leading-tight text-white cursor-pointer hover:text-[#38e07b] transition-colors group"
+                                title="Click to edit manga title"
+                            >
+                                {mangaTitle || job?.result?.title || "Untitled Project"}
+                                <span className="material-symbols-outlined text-[12px] opacity-0 group-hover:opacity-50 ml-1">edit</span>
+                            </h2>
+                        )}
+                        {/* Editable Chapter Title */}
+                        {editingChapterTitle ? (
+                            <input
+                                type="text"
+                                value={chapterTitle}
+                                onChange={(e) => setChapterTitle(e.target.value)}
+                                onBlur={() => setEditingChapterTitle(false)}
+                                onKeyDown={(e) => e.key === "Enter" && setEditingChapterTitle(false)}
+                                className="bg-transparent text-xs text-white/50 border-b border-[#38e07b]/50 outline-none px-1 -ml-1"
+                                autoFocus
+                            />
+                        ) : (
+                            <span
+                                onClick={() => setEditingChapterTitle(true)}
+                                className="text-xs text-white/50 cursor-pointer hover:text-white/70 transition-colors"
+                                title="Click to edit chapter name"
+                            >
+                                Ch. 1: {chapterTitle || "Untitled Chapter"} • {totalPages} pages
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -634,15 +801,9 @@ export default function PreviewPage() {
                                         className="w-full h-full object-contain bg-white"
                                     />
 
-                                    {/* Interactive Panel Overlays - Dynamic Grid */}
-                                    <div
-                                        className="absolute inset-0 grid gap-1 p-1"
-                                        style={{
-                                            gridTemplateColumns: `repeat(${grid.cols}, 1fr)`,
-                                            gridTemplateRows: `repeat(${grid.rows}, 1fr)`
-                                        }}
-                                    >
-                                        {Array.from({ length: totalPanels }).map((_, idx) => {
+                                    {/* V4: Interactive Panel Overlays - Absolute Positioning from Layout Template */}
+                                    <div className="absolute inset-0">
+                                        {panelGeometry.map((geom, idx) => {
                                             const panelId = `page-${currentPage}-panel-${idx}`;
                                             const dialogues = panelDialogues[panelId] || [];
 
@@ -650,10 +811,17 @@ export default function PreviewPage() {
                                                 <div
                                                     key={idx}
                                                     onClick={() => setSelectedPanel(selectedPanel === idx ? null : idx)}
-                                                    className={`cursor-pointer rounded-sm transition-all relative ${selectedPanel === idx
+                                                    className={`absolute cursor-pointer rounded-sm transition-all ${selectedPanel === idx
                                                         ? "border-2 border-[#38e07b] bg-[#38e07b]/10 shadow-[0_0_15px_rgba(56,224,123,0.3)]"
                                                         : "border-2 border-transparent hover:border-[#38e07b]/50 hover:bg-[#38e07b]/5"
                                                         }`}
+                                                    style={{
+                                                        // V4: Subtract 4px gap to prevent overlap with neighboring panels
+                                                        left: `calc(${geom.x}% + 2px)`,
+                                                        top: `calc(${geom.y}% + 2px)`,
+                                                        width: `calc(${geom.w}% - 4px)`,
+                                                        height: `calc(${geom.h}% - 4px)`
+                                                    }}
                                                 >
                                                     {/* Panel selection badge */}
                                                     {selectedPanel === idx && (
@@ -733,16 +901,38 @@ export default function PreviewPage() {
                 <aside className="w-80 bg-[#0a110e] border-l border-white/5 flex flex-col">
                     {/* Header for Selected Item */}
                     <div className="p-5 border-b border-white/5">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="material-symbols-outlined text-[#38e07b] text-sm">crop_free</span>
-                            <h3 className="font-bold text-xs uppercase tracking-wider text-white/50">
-                                {selectedPanel !== null ? `Panel ${selectedPanel + 1} Selected` : "Select a Panel"}
-                            </h3>
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[#38e07b] text-sm">crop_free</span>
+                                <h3 className="font-bold text-xs uppercase tracking-wider text-white/50">
+                                    {selectedPanel !== null ? `Panel ${selectedPanel + 1} Selected` : "Select a Panel"}
+                                </h3>
+                            </div>
+                            {/* Story Viewer Toggle */}
+                            <button
+                                onClick={() => setShowStoryPanel(!showStoryPanel)}
+                                className={`p-1.5 rounded-lg transition-colors ${showStoryPanel ? "bg-[#38e07b]/20 text-[#38e07b]" : "text-gray-400 hover:text-white hover:bg-white/10"}`}
+                                title={showStoryPanel ? "Hide Story Context" : "Show Story Context"}
+                            >
+                                <span className="material-symbols-outlined text-[18px]">menu_book</span>
+                            </button>
                         </div>
                         <h2 className="text-lg font-bold text-white">
                             {selectedPanel !== null ? "Edit Panel" : job?.result?.title || "Preview"}
                         </h2>
                     </div>
+
+                    {/* Story Viewer Panel (Collapsible) */}
+                    {showStoryPanel && (
+                        <div className="h-64 border-b border-white/5">
+                            <StoryViewer
+                                jobId={jobId}
+                                currentPage={currentPage}
+                                selectedPanel={selectedPanel}
+                                onSelectPage={(pageNum) => setCurrentPage(pageNum)}
+                            />
+                        </div>
+                    )}
 
                     <div className="flex-1 overflow-y-auto p-5 space-y-6">
                         {selectedPanel !== null ? (
@@ -801,6 +991,31 @@ export default function PreviewPage() {
                                 {/* Dialogue Editing */}
                                 <div className="space-y-4">
                                     <h4 className="text-sm font-bold text-white">Dialogue & Bubbles</h4>
+
+                                    {/* AI Dialogue Regeneration (V3 Phase 4) */}
+                                    <div className="p-3 rounded-xl bg-gradient-to-br from-[#16261e] to-[#1a2a22] border border-[#38e07b]/20">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="material-symbols-outlined text-[#38e07b] text-sm">auto_awesome</span>
+                                            <label className="text-xs font-semibold text-[#38e07b]">AI Dialogue</label>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={dialogueStyleHint}
+                                            onChange={(e) => setDialogueStyleHint(e.target.value)}
+                                            placeholder="Style hint: more dramatic, funnier..."
+                                            className="w-full bg-[#0d1a14] border border-[#264532] rounded-lg py-2 px-3 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-[#38e07b] mb-2"
+                                        />
+                                        <button
+                                            onClick={handleRegenerateDialogue}
+                                            disabled={regeneratingDialogue}
+                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#38e07b]/20 hover:bg-[#38e07b]/30 border border-[#38e07b]/40 text-[#38e07b] text-xs font-bold transition-colors disabled:opacity-50"
+                                        >
+                                            <span className={`material-symbols-outlined text-sm ${regeneratingDialogue ? "animate-spin" : ""}`}>
+                                                {regeneratingDialogue ? "sync" : "auto_fix_high"}
+                                            </span>
+                                            {regeneratingDialogue ? "Regenerating..." : "Regenerate All Dialogue"}
+                                        </button>
+                                    </div>
 
                                     <div className="space-y-3">
                                         <label className="text-xs font-semibold text-white/50 block">Content</label>

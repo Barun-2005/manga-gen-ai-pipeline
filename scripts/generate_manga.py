@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any, Callable
 from dataclasses import dataclass, field
 
+# V4: Layout templates for dynamic panel composition
+from scripts.layout_templates import LAYOUT_TEMPLATES, validate_template
+import inspect
+import asyncio
+
 
 @dataclass
 class MangaConfig:
@@ -25,18 +30,183 @@ class MangaConfig:
     layout: str = "2x2"  # "2x2" (4 panels), "2x3" (6 panels)
     pages: int = 1
     output_dir: str = "outputs"
-    image_provider: str = "pollinations"  # "pollinations" or "nvidia"
+    image_provider: str = "pollinations"  # "pollinations", "comfyui", or "nvidia"
     is_complete_story: bool = False  # If True, wrap up story. If False, leave for continuation.
+    starting_page_number: int = 1  # For continuations: start at page N+1 to avoid overwriting
     
     @property
     def panels_per_page(self) -> int:
-        if self.layout == "2x2":
+        """
+        Returns panels per page, or None for dynamic (V4 archetype-based) layouts.
+        When None, the LLM decides panel count based on page archetype.
+        """
+        if self.layout == "dynamic":
+            return None  # V4: Let LLM decide based on archetypes
+        elif self.layout == "2x2":
             return 4
         elif self.layout == "2x3":
             return 6
         elif self.layout == "3x3":
             return 9
-        return 4
+        elif self.layout == "full":
+            return 1
+        return None  # Default to dynamic for unknown layouts
+
+
+class ComfyUIGeneratorWrapper:
+    """
+    Wrapper to adapt async ComfyUI ImageProvider to sync generator interface.
+    
+    This enables local ComfyUI generation using our tested Hybrid Z-Image workflow.
+    The wrapper converts async generate() calls to sync and handles file saving.
+    """
+    
+    def __init__(self, provider, output_dir: str):
+        self.provider = provider
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._panel_counter = 0
+    
+    # Action keywords for Animagine pass (future feature)
+    ACTION_KEYWORDS = ['fight', 'battle', 'attack', 'explosion', 'running', 
+                       'jumping', 'punch', 'kick', 'dodge', 'clash', 'combat',
+                       'sword', 'weapon', 'action', 'charging', 'flying']
+    
+    def _is_action_scene(self, prompt: str) -> bool:
+        """Detect if prompt describes an action scene."""
+        prompt_lower = prompt.lower()
+        return any(kw in prompt_lower for kw in self.ACTION_KEYWORDS)
+    
+    def _strip_color_words(self, prompt: str) -> str:
+        """Remove color words from prompt for B/W mode."""
+        import re
+        # Replace color words with grayscale alternatives
+        color_patterns = [
+            (r'\b(pink|magenta)\s*(hair|haired)', 'light grey hair'),
+            (r'\b(blue|azure|cyan)\s*(hair|haired)', 'dark grey hair'),
+            (r'\b(red|crimson|scarlet)\s*(hair|haired)', 'dark hair'),
+            (r'\b(green|emerald)\s*(hair|haired)', 'grey hair'),
+            (r'\b(purple|violet)\s*(hair|haired)', 'grey hair'),
+            (r'\b(yellow|blonde|golden)\s*(hair|haired)', 'light hair'),
+            (r'\b(orange)\s*(hair|haired)', 'light grey hair'),
+            (r'\b(pink|blue|red|green|purple|yellow|orange|cyan|magenta)\s*(eyes)', r'grey \2'),
+            # Remove standalone color words
+            (r'\b(vibrant|colorful|colored|coloured)\b', ''),
+        ]
+        result = prompt
+        for pattern, replacement in color_patterns:
+            result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+        return result
+    
+    async def generate_image(
+        self,
+        prompt: str,
+        filename: str,
+        width: int = 1024,
+        height: int = 1024,
+        style: str = "anime",
+        max_retries: int = 3,
+        seed: Optional[int] = None
+    ) -> Optional[str]:
+        """
+        Generate a single image using ComfyUI Z-Image Hybrid workflow.
+        
+        Compatible with PollinationsGenerator/NVIDIAImageGenerator interface.
+        """
+        import asyncio
+        
+        # For B/W mode: strip color words and add strong B/W enforcement
+        if style == "bw_manga":
+            prompt = self._strip_color_words(prompt)
+            style_suffix = ", manga style, monochrome, ink drawing, high contrast, screentone, BLACK AND WHITE ONLY, grayscale, NO COLOR"
+        else:
+            style_suffix = ", anime style, vibrant colors, studio quality"
+        
+        # Check for action scene (log for now, Animagine pass is future feature)
+        if self._is_action_scene(prompt):
+            print(f"   ⚡ Action scene detected: {prompt[:50]}...")
+        
+        full_prompt = f"{prompt}{style_suffix}"
+        actual_seed = seed if seed is not None else 42 + self._panel_counter
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"   🖼️ ComfyUI generating (attempt {attempt + 1})...")
+                
+                # Direct async await - no manual loop!
+                image_bytes = await self.provider.generate(
+                    prompt=full_prompt, 
+                    width=width, 
+                    height=height, 
+                    seed=actual_seed, 
+                    panel_id=f"panel_{self._panel_counter}"
+                )
+                
+                # Save to file
+                output_path = self.output_dir / filename
+                with open(output_path, 'wb') as f:
+                    f.write(image_bytes)
+                
+                self._panel_counter += 1
+                print(f"   ✅ Saved: {filename}")
+                return str(output_path)
+                
+            except Exception as e:
+                print(f"   ⚠️ ComfyUI attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    print(f"   ❌ All retries failed for: {filename}")
+                    return None
+                await asyncio.sleep(2)
+        
+        return None
+    
+    async def generate_cover(
+        self,
+        prompt: str,
+        style: str = "anime",
+        width: int = 768,
+        height: int = 1024,  # Taller for cover
+        seed: int = 12345
+    ) -> Optional[str]:
+        """
+        Generate a cover image for the manga.
+        Uses the same workflow as panel generation but saves as cover.png
+        """
+        filename = "cover.png"
+        
+        print(f"   🎨 Generating Cover Art: {prompt[:50]}...")
+        
+        return await self.generate_image(
+            prompt=prompt,
+            filename=filename,
+            width=width,
+            height=height,
+            style=style,
+            seed=seed
+        )
+    
+    def generate_panels(self, prompts: list, seeds: list = None) -> list:
+        """
+        Generate multiple panels using ComfyUI.
+        
+        Compatible with PollinationsGenerator.generate_panels() interface.
+        """
+        results = []
+        seeds = seeds or [42 + i for i in range(len(prompts))]
+        
+        for i, (prompt, seed) in enumerate(zip(prompts, seeds)):
+            filename = f"panel_{self._panel_counter:04d}.png"
+            result = self.generate_image(prompt, filename, seed=seed)
+            if result:
+                results.append({
+                    "path": result,
+                    "prompt": prompt,
+                    "seed": seed
+                })
+            else:
+                results.append({"error": "Generation failed", "prompt": prompt})
+        
+        return results
 
 
 class MangaGenerator:
@@ -45,7 +215,7 @@ class MangaGenerator:
     
     Uses:
     - Gemini AI for story planning (Story Director)
-    - Pollinations.ai for image generation
+    - Pollinations.ai OR ComfyUI for image generation
     - Smart bubble placement for dialogue
     """
     
@@ -60,7 +230,18 @@ class MangaGenerator:
         from src.ai.character_dna import CharacterDNAManager
         
         # Choose image generator based on provider
-        if config.image_provider == "nvidia":
+        if config.image_provider == "comfyui":
+            # Use local ComfyUI with Hybrid Z-Image workflow (TESTED 8.5/10)
+            from src.ai.image_factory import get_image_provider
+            comfyui = get_image_provider("comfyui")
+            if comfyui.is_available():
+                print(f"📦 Using ComfyUI Hybrid (Z-Image local) - Start with: py -3.10 ComfyUI/main.py --novram")
+                # Wrap ComfyUI provider in a compatible interface
+                self.image_generator = ComfyUIGeneratorWrapper(comfyui, str(self.output_dir))
+            else:
+                print(f"⚠️ ComfyUI not available (start it first!), falling back to Pollinations")
+                self.image_generator = PollinationsGenerator(str(self.output_dir))
+        elif config.image_provider == "nvidia":
             import os
             nvidia_key = os.environ.get("NVIDIA_IMAGE_API_KEY")
             if nvidia_key:
@@ -95,7 +276,145 @@ class MangaGenerator:
                 self._story_director = None
         return self._story_director
     
-    def generate_chapter(
+    def _extract_chapters_from_plan(self, chapter_plan: Dict) -> List[Dict]:
+        """
+        Extract chapter structure from LLM plan.
+        Groups pages by chapter_number for multi-chapter stories.
+        """
+        import uuid
+        
+        pages = chapter_plan.get('pages', [])
+        
+        # Group pages by chapter_number
+        chapters_dict = {}
+        for page in pages:
+            chapter_num = page.get('chapter_number', 1)
+            if chapter_num not in chapters_dict:
+                chapters_dict[chapter_num] = {
+                    "chapter_id": f"ch_{uuid.uuid4().hex[:8]}",
+                    "chapter_number": chapter_num,
+                    "title": chapter_plan.get('chapter_title', self.config.title),
+                    "summary": chapter_plan.get('summary', ''),
+                    "pages": []
+                }
+            chapters_dict[chapter_num]["pages"].append(page.get('page_id'))
+        
+        # If only one chapter, use the LLM's chapter title
+        if len(chapters_dict) == 1:
+            chapter = list(chapters_dict.values())[0]
+            chapter["chapter_id"] = chapter_plan.get('chapter_id', chapter["chapter_id"])
+            chapter["title"] = chapter_plan.get('chapter_title', self.config.title)
+        
+        # Convert to sorted list
+        return sorted(chapters_dict.values(), key=lambda c: c["chapter_number"])
+    
+    def _count_chapters(self, chapter_plan: Dict) -> int:
+        """Count number of unique chapters in the plan."""
+        pages = chapter_plan.get('pages', [])
+        chapter_nums = set(p.get('chapter_number', 1) for p in pages)
+        return len(chapter_nums) if chapter_nums else 1
+    
+    def _save_story_blueprint(self, chapter_plan: Dict, story_prompt: str, characters: Optional[List[Dict]]):
+        """
+        Save complete story state for save/continue/edit flows.
+        
+        Creates story_state.json with:
+        - Stable UUIDs for all entities
+        - Character DNA for visual consistency
+        - Continuation state for "continue story" feature
+        """
+        from datetime import datetime
+        import json
+        import uuid
+        
+        try:
+            # Generate manga-level UUID if not exists
+            manga_id = f"manga_{uuid.uuid4().hex[:12]}"
+            
+            story_state = {
+                # Schema version for future migrations
+                "$schema": "MangaGen Story State v1.0",
+                "manga_id": manga_id,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                
+                # Metadata
+                "metadata": {
+                    "manga_title": chapter_plan.get("manga_title", self.config.title),
+                    "title": self.config.title,  # Keep original chapter title
+                    "cover_prompt": chapter_plan.get("cover_prompt", ""),
+                    "style": self.config.style,
+                    "total_pages": self.config.pages,
+                    "layout_template": self.config.layout,
+                    "status": "complete" if self.config.is_complete_story else "in_progress"
+                },
+                
+                # Story context (for understanding and continuation)
+                "story_context": {
+                    "original_prompt": story_prompt,
+                    "llm_interpretation": chapter_plan.get('summary', ''),
+                    "genre": "manga",  # Could be detected by LLM
+                    "target_scope": "complete" if self.config.is_complete_story else "chapter"
+                },
+                
+                # Characters with DNA for visual consistency
+                "characters": chapter_plan.get('characters', []),
+                
+                # Extract chapters from pages (multi-chapter detection)
+                "chapters": self._extract_chapters_from_plan(chapter_plan),
+                
+                # Pages and panels (full data)
+                "pages": chapter_plan.get('pages', []),
+                
+                # Continuation state (for "continue story" feature)
+                "continuation_state": {
+                    "cliffhanger": chapter_plan.get('cliffhanger', ''),
+                    "next_chapter_hook": chapter_plan.get('next_chapter_hook', ''),
+                    "unresolved_threads": [],  # Could be extracted by LLM
+                    "chapter_count": self._count_chapters(chapter_plan)
+                },
+                
+                # Legacy format (for backwards compatibility)
+                "chapter_plan": chapter_plan,
+                "panel_prompts": []
+            }
+            
+            # Extract panel prompts for debugging (with stable IDs)
+            for page in chapter_plan.get('pages', []):
+                for panel in page.get('panels', []):
+                    story_state["panel_prompts"].append({
+                        "panel_id": panel.get('panel_id'),
+                        "page_id": page.get('page_id'),
+                        "panel_number": panel.get('panel_number'),
+                        "description": panel.get('description'),
+                        "dialogue": panel.get('dialogue', [])
+                    })
+            
+            # Save to output directory
+            state_path = self.output_dir / "story_state.json"
+            with open(state_path, 'w', encoding='utf-8') as f:
+                json.dump(story_state, f, indent=2, ensure_ascii=False)
+            
+            # Also save legacy format for backwards compatibility
+            legacy_path = self.output_dir / "story_blueprint.json"
+            with open(legacy_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    "timestamp": story_state["created_at"],
+                    "original_prompt": story_prompt,
+                    "provided_characters": characters or [],
+                    "config": story_state["metadata"],
+                    "chapter_plan": chapter_plan,
+                    "panel_prompts": story_state["panel_prompts"]
+                }, f, indent=2, ensure_ascii=False)
+            
+            print(f"📝 Story state saved: {state_path}")
+            print(f"📝 Legacy blueprint saved: {legacy_path}")
+            
+        except Exception as e:
+            print(f"⚠️ Failed to save story state: {e}")
+    
+
+    async def generate_chapter(
         self,
         story_prompt: str,
         groq_api_key: str,
@@ -141,28 +460,52 @@ class MangaGenerator:
             # Register characters with Character DNA Manager
             print("\n🧬 Building Character DNA for visual consistency...")
             self.character_dna.register_characters_from_plan(chapter_plan)
+            
+            # Save story blueprint for debugging/analysis
+            self._save_story_blueprint(chapter_plan, story_prompt, characters)
         else:
             # Fallback to Groq (simpler planning)
             print("\n⚡ Using Groq for scene generation (set GEMINI_API_KEY for better results)...")
             chapter_plan = self._generate_with_groq(story_prompt, groq_api_key)
+            
+            # Save story blueprint for debugging/analysis
+            self._save_story_blueprint(chapter_plan, story_prompt, characters)
+        
+        # Calculate actual total panels from the plan
+        actual_total_panels = sum(len(page.get('panels', [])) for page in chapter_plan.get('pages', []))
+        
+        # Report plan completion with actual panel count
+        if progress_callback:
+            progress_callback("Planning complete", 20, {
+                "event": "plan_complete",
+                "total_panels": actual_total_panels,
+                "pages": len(chapter_plan.get('pages', []))
+            })
         
         # Step 2: Generate panels and compose pages
         chapter_pages = []
         
+        # Track running panel count for accurate indexing in dynamic layouts
+        total_panels_generated = 0
+        
         for page_data in chapter_plan.get('pages', []):
-            page_num = page_data.get('page_number', len(chapter_pages) + 1)
+            # Offset page number for continuations (e.g., page 1 becomes page 4 if starting_page_number=4)
+            original_page_num = page_data.get('page_number', len(chapter_pages) + 1)
+            page_num = original_page_num + (self.config.starting_page_number - 1)
             
-            print(f"\n📄 Processing Page {page_num}/{self.config.pages}")
+            print(f"\n📄 Processing Page {page_num}/{self.config.starting_page_number + self.config.pages - 1}")
             print(f"   Beat: {page_data.get('emotional_beat', 'unknown')}")
             
-            # Report progress
+            # Report progress - use original_page_num (1,2,3) not offset page_num (7,8,9)
             if progress_callback:
-                # Progress calculation: 20% (planning done) + (80% * page_num / total_pages)
-                current_prog = 20 + int(70 * (page_num - 1) / self.config.pages)
-                progress_callback(f"Processing page {page_num}/{self.config.pages}...", current_prog, None)
+                # Progress calculation: 20% (planning done) + 70% for pages
+                current_prog = 20 + int(70 * (original_page_num - 1) / self.config.pages)
+                # Display relative progress (1/3) that matches percentage
+                progress_callback(f"Processing page {original_page_num}/{self.config.pages}...", current_prog, None)
             
-            # Generate panel images
-            panel_paths = self._generate_page_panels(page_data, page_num, progress_callback)
+            # Generate panel images (pass base_panel_index for correct indexing)
+            panel_paths = await self._generate_page_panels(page_data, page_num, progress_callback, total_panels_generated)
+            total_panels_generated += len(page_data.get('panels', []))  # Update running count
             
             # Extract dialogue data (no rendering - just JSON)
             if progress_callback:
@@ -176,7 +519,8 @@ class MangaGenerator:
             page_path = self._compose_page(
                 panel_paths,
                 page_num,
-                self.config.title
+                self.config.title,
+                page_data  # V4.2: Pass page_data for layout template
             )
             
             if progress_callback:
@@ -194,28 +538,127 @@ class MangaGenerator:
             chapter_pages.append({
                 'page_number': page_num,
                 'summary': page_data.get('page_summary', ''),
-                'panels': panel_paths,
+                'archetype': page_data.get('archetype', 'DEFAULT'),
+                'layout_template': page_data.get('layout_template', '2x2_grid'),
+                # V4 FIX: Include panel data with x,y,w,h geometry for frontend
+                'panels': page_data.get('panels', []),  # Full panel objects with geometry!
+                'panel_paths': [str(p) for p in panel_paths],  # Legacy: file paths
                 'page_image': page_path,
-                'dialogue': dialogue_data  # NEW: Store for canvas editor
+                'dialogue': dialogue_data  # Store for canvas editor
             })
         
-        # Step 3: Create PDF
+        # Step 3: Generate Cover Image
+        # V4.7: Progress feedback so frontend doesn't appear stuck
+        if progress_callback:
+            progress_callback("Generating cover image...", 95, {"event": "cover_start"})
+        
+        cover_url = None
+        cover_prompt = chapter_plan.get('cover_prompt', '')
+        manga_title = chapter_plan.get('manga_title', self.config.title)
+        
+        if cover_prompt and self.image_generator and hasattr(self.image_generator, 'generate_cover'):
+            try:
+                print(f"\n🎨 Generating cover image for '{manga_title}'...")
+                cover_result = self.image_generator.generate_cover(
+                    prompt=cover_prompt,
+                    style=self.config.style,
+                    width=768,
+                    height=1024
+                )
+                
+                if cover_result:
+                    cover_url = f"/outputs/{self.output_dir.name}/cover.png"
+                    print(f"✅ Cover generated: {cover_url}")
+                    if progress_callback:
+                        progress_callback("Cover complete!", 98, {"event": "cover_complete", "cover_url": cover_url})
+                else:
+                    # Fallback to first page
+                    if chapter_pages:
+                        cover_url = f"/outputs/{self.output_dir.name}/manga_page_01.png"
+                        print(f"📘 Fallback: Using first page as cover")
+            except Exception as e:
+                print(f"⚠️ Cover generation failed: {e}")
+                if chapter_pages:
+                    cover_url = f"/outputs/{self.output_dir.name}/manga_page_01.png"
+        else:
+            # No cover prompt or method - use first page as cover
+            if chapter_pages:
+                cover_url = f"/outputs/{self.output_dir.name}/manga_page_01.png"
+                print(f"📘 Cover: Using first page as cover for '{manga_title}'")
+        
+        # Step 4: Create PDF
         pdf_path = self._create_pdf(chapter_pages)
+        
+        # Step 4.5: Update story_state.json with final panel geometry
+        # This ensures x,y,w,h data is saved for canvas panel selection
+        try:
+            import json
+            state_path = self.output_dir / "story_state.json"
+            if state_path.exists():
+                with open(state_path, 'r', encoding='utf-8') as f:
+                    story_state = json.load(f)
+                
+                # MERGE chapters: Get existing chapters and append/update pages
+                existing_chapters = story_state.get("chapters", [])
+                
+                if existing_chapters and isinstance(existing_chapters, list):
+                    # Get existing pages from all chapters
+                    existing_pages = []
+                    for ch in existing_chapters:
+                        if isinstance(ch, dict):
+                            existing_pages.extend(ch.get("pages", []))
+                    
+                    # Merge: Append new pages to existing (avoid duplicates by page_number)
+                    existing_page_nums = {p.get("page_number") for p in existing_pages if isinstance(p, dict)}
+                    for page in chapter_pages:
+                        if page.get("page_number") not in existing_page_nums:
+                            existing_pages.append(page)
+                        else:
+                            # Update existing page with new data (geometry fix for overwrites)
+                            for i, ep in enumerate(existing_pages):
+                                if ep.get("page_number") == page.get("page_number"):
+                                    existing_pages[i] = page
+                                    break
+                    
+                    # Save as single merged chapter
+                    story_state["chapters"] = [{
+                        "chapter_number": 1,
+                        "title": self.config.title,
+                        "pages": existing_pages  # All pages with geometry!
+                    }]
+                else:
+                    # First generation - just save new pages
+                    story_state["chapters"] = [{
+                        "chapter_number": 1,
+                        "title": self.config.title,
+                        "pages": chapter_pages
+                    }]
+                
+                with open(state_path, 'w', encoding='utf-8') as f:
+                    json.dump(story_state, f, indent=2, ensure_ascii=False)
+                print(f"📝 Updated story_state with panel geometry ({len(story_state['chapters'][0]['pages'])} pages)")
+        except Exception as e:
+            print(f"⚠️ Failed to update story_state with geometry: {e}")
         
         elapsed = time.time() - start_time
         
         print("\n" + "=" * 60)
         print(f"✅ Chapter Complete!")
         print("=" * 60)
+        print(f"   Manga: {manga_title}")
+        print(f"   Chapter: {self.config.title}")
         print(f"   Pages: {len(chapter_pages)}")
         print(f"   Time: {elapsed/60:.1f} minutes")
         print(f"   PDF: {pdf_path}")
+        print(f"   Cover: {cover_url}")
         
         if chapter_plan.get('cliffhanger'):
             print(f"\n🎬 Cliffhanger: {chapter_plan.get('cliffhanger')}")
         
         return {
-            'title': self.config.title,
+            'manga_title': manga_title,  # NEW: Series name
+            'title': self.config.title,   # Chapter title
+            'cover_url': cover_url,       # NEW: Cover image URL
             'summary': chapter_plan.get('summary', ''),
             'characters': chapter_plan.get('characters', []),
             'pages': chapter_pages,
@@ -254,11 +697,33 @@ class MangaGenerator:
             'pages': pages
         }
     
-    def _generate_page_panels(self, page_data: Dict, page_num: int, progress_callback: Optional[Callable] = None) -> List[str]:
-        """Generate panel images for a single page."""
+    async def _generate_page_panels(self, page_data: Dict, page_num: int, progress_callback: Optional[Callable] = None, base_panel_index: int = 0) -> List[str]:
+        """Generate panel images for a single page.
+        
+        Args:
+            page_data: Panel data for this page
+            page_num: Page number (1-indexed)
+            progress_callback: Optional callback for progress updates
+            base_panel_index: Running count of panels generated so far (for accurate indexing)
+        """
         
         panels = page_data.get('panels', [])
         characters = {c.get('name', ''): c for c in page_data.get('characters', [])}
+        
+        # V4 GEOMETRY: Merge layout template dimensions into panels
+        # Get template info from page_data (set by LLM or _compose_page fallback)
+        layout_template_name = page_data.get('layout_template', '2x2_grid')
+        template = LAYOUT_TEMPLATES.get(layout_template_name, LAYOUT_TEMPLATES.get('2x2_grid', {}))
+        template_layout = template.get('layout', [])
+        
+        # Merge w,h from template into each panel (if available)
+        for idx, panel in enumerate(panels):
+            if idx < len(template_layout):
+                template_panel = template_layout[idx]
+                panel['w'] = template_panel.get('w', 50)
+                panel['h'] = template_panel.get('h', 50)
+                panel['x'] = template_panel.get('x', 0)
+                panel['y'] = template_panel.get('y', 0)
         
         generated_files = []
         
@@ -283,23 +748,61 @@ class MangaGenerator:
                 characters_present=characters_present
             )
             
-            print(f"   Panel {i}: {description[:40]}...")
+            # V4 GEOMETRY FIX: Calculate aspect ratio from panel dimensions
+            # Panel dimensions come from layout template (w, h as percentages)
+            panel_w_pct = panel.get('w', 50)  # Width percentage from layout
+            panel_h_pct = panel.get('h', 50)  # Height percentage from layout
             
-            result = self.image_generator.generate_image(
-                prompt=prompt,
-                filename=filename,
-                style=self.config.style,
-                seed=page_num * 100 + i
-            )
+            # Convert percentage-based aspect to actual pixel dimensions
+            # Base: 1024x1024 at 1:1, adjust based on panel shape
+            if panel_w_pct > panel_h_pct:
+                # Wide panel (e.g., panorama 100x35 = 2.86:1)
+                aspect = panel_w_pct / panel_h_pct
+                img_width = 1024
+                img_height = max(512, int(1024 / aspect))  # Min 512 for quality
+            elif panel_h_pct > panel_w_pct:
+                # Tall panel (e.g., portrait 33x70 = 0.47:1)
+                aspect = panel_h_pct / panel_w_pct
+                img_height = 1024
+                img_width = max(512, int(1024 / aspect))
+            else:
+                # Square panel
+                img_width = 1024
+                img_height = 1024
+            
+            print(f"   Panel {i}: {description[:40]}... ({img_width}x{img_height})")
+            
+            # Hybrid Sync/Async Handler
+            gen_func = self.image_generator.generate_image
+            if inspect.iscoroutinefunction(gen_func):
+                result = await gen_func(
+                    prompt=prompt,
+                    filename=filename,
+                    width=img_width,
+                    height=img_height,
+                    style=self.config.style,
+                    seed=page_num * 100 + i
+                )
+            else:
+                result = gen_func(
+                    prompt=prompt,
+                    filename=filename,
+                    width=img_width,
+                    height=img_height,
+                    style=self.config.style,
+                    seed=page_num * 100 + i
+                )
             
             if result:
                 generated_files.append(result)
                 print(f"   ✅ {filename}")
                 
                 if progress_callback:
+                    # Use base_panel_index for correct dynamic layout indexing
+                    global_panel_idx = base_panel_index + (i - 1)
                     data = {
                         "event": "panel_complete",
-                        "panel_index": (page_num - 1) * 4 + (i - 1),
+                        "panel_index": global_panel_idx,
                         "image_path": str(result)
                     }
                     progress_callback(f"Generated Panel {i} on Page {page_num}", -1, data)
@@ -341,10 +844,15 @@ class MangaGenerator:
         print(f"   ℹ️  Dialogue will be composited in canvas editor")
         return panel_paths, dialogue_per_panel
     
-    def _compose_page(self, panel_paths: List[str], page_num: int, title: str) -> str:
-        """Compose panels into a single manga page."""
+    def _compose_page(self, panel_paths: List[str], page_num: int, title: str, page_data: Optional[Dict] = None) -> str:
+        """
+        Compose panels into a single manga page.
         
+        V4.2: Uses layout templates for dynamic composition.
+        V4.6: Safety Valve auto-corrects template/panel count mismatches.
+        """
         from PIL import Image, ImageDraw, ImageFont
+        from scripts.layout_templates import LAYOUT_TEMPLATES, validate_template
         
         print(f"\n📐 Composing page {page_num}...")
         
@@ -363,48 +871,75 @@ class MangaGenerator:
         
         # Load panels
         panels = [Image.open(p) for p in valid_panels]
+        panel_count = len(panels)
+        
+        # V4.2: Get layout template from page_data
+        # Priority: LLM layout_template > config.layout (only if not "dynamic") > 2x2_grid default
+        template_name = "2x2_grid"  # Default fallback
+        
+        if page_data and isinstance(page_data, dict) and page_data.get('layout_template'):
+            # Best case: LLM specified a layout template
+            template_name = page_data.get('layout_template')
+            print(f"   🤖 Using LLM-specified template: {template_name}")
+        elif self.config.layout and self.config.layout != "dynamic":
+            # User forced a specific layout (not using AI mode)
+            layout_map = {"2x2": "2x2_grid", "2x3": "talk_6panel_grid", "full": "reveal_fullpage", "3x3": "2x2_grid"}
+            template_name = layout_map.get(self.config.layout, "2x2_grid")
+            print(f"   📐 Using user-specified layout: {template_name}")
+        else:
+            # Dynamic mode without LLM template - use default
+            print(f"   ⚠️ No LLM template found, using default: {template_name}")
+        
+        # V4.6 Safety Valve: Validate template matches actual panel count
+        template_name = validate_template(template_name, panel_count)
+        template = LAYOUT_TEMPLATES.get(template_name, LAYOUT_TEMPLATES["2x2_grid"])
+        
+        print(f"   📐 Final template: {template_name} ({template['panel_count']} panels)")
         
         # Page settings
-        if self.config.layout == "2x2":
-            cols, rows = 2, 2
-        elif self.config.layout == "2x3":
-            cols, rows = 2, 3
-        else:
-            cols, rows = 3, 3
-        
         page_width = 1240
+        page_height = 1754  # Standard manga page ratio
         margin = 30
-        gutter = 20
-        title_height = 50
+        gutter = 10  # Gap between panels
         
-        panel_width = (page_width - 2 * margin - (cols - 1) * gutter) // cols
-        panel_height = int(panel_width * 1.2)
-        page_height = 2 * margin + title_height + rows * panel_height + (rows - 1) * gutter
+        # Calculate usable area (no title - pure art!)
+        usable_width = page_width - (2 * margin)
+        usable_height = page_height - (2 * margin)
         
         # Create page
         page = Image.new("RGB", (page_width, page_height), "white")
         draw = ImageDraw.Draw(page)
         
-        # Title
-        try:
-            font = ImageFont.truetype("arial.ttf", 28)
-        except:
-            font = ImageFont.load_default()
+        # V4: No baked title - pages are pure art!
+        # Title/metadata will be handled by the canvas editor or PDF generator
         
-        page_title = f"{title} - Page {page_num}"
-        draw.text((margin, 15), page_title, fill="black", font=font)
-        
-        # Place panels
-        for idx, panel in enumerate(panels[:cols * rows]):
-            row = idx // cols
-            col = idx % cols
+        # Place panels according to template layout
+        layout = template.get("layout", [])
+        for idx, panel_def in enumerate(layout):
+            if idx >= len(panels):
+                break
             
-            x = margin + col * (panel_width + gutter)
-            y = title_height + margin + row * (panel_height + gutter)
+            # Calculate pixel positions from percentage-based template
+            x = margin + int(usable_width * panel_def["x"] / 100)
+            y = margin + int(usable_height * panel_def["y"] / 100)  # No title offset!
+            w = int(usable_width * panel_def["w"] / 100) - gutter
+            h = int(usable_height * panel_def["h"] / 100) - gutter
             
-            resized = panel.resize((panel_width, panel_height), Image.LANCZOS)
+            # Ensure minimum size
+            w = max(w, 100)
+            h = max(h, 100)
+            
+            # Resize and paste panel
+            panel = panels[idx]
+            resized = panel.resize((w, h), Image.LANCZOS)
             page.paste(resized, (x, y))
-            draw.rectangle([x, y, x + panel_width, y + panel_height], outline="black", width=2)
+            
+            # Draw panel border
+            draw.rectangle([x, y, x + w, y + h], outline="black", width=2)
+        
+        # V4.4: Apply screentone filter for B/W manga (creates halftone dot pattern)
+        if self.config.style == "bw_manga":
+            page = self._apply_screentone_filter(page)
         
         # Save
         output_path = self.output_dir / f"manga_page_{page_num:02d}.png"
@@ -412,6 +947,54 @@ class MangaGenerator:
         print(f"   ✅ Saved: {output_path}")
         
         return str(output_path)
+    
+    def _apply_screentone_filter(self, page: 'Image.Image') -> 'Image.Image':
+        """
+        Apply screentone effect (Floyd-Steinberg dithering) for authentic B/W manga look.
+        This creates halftone dot patterns like professionally printed manga.
+        """
+        import cv2
+        import numpy as np
+        from PIL import Image
+        
+        print("   🎨 Applying screentone filter...")
+        
+        # Convert PIL Image to numpy array
+        page_array = np.array(page)
+        
+        # Convert to grayscale
+        if len(page_array.shape) == 3:
+            gray = cv2.cvtColor(page_array, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = page_array
+        
+        # Apply Floyd-Steinberg dithering
+        # This algorithm distributes quantization error to neighboring pixels
+        # creating the characteristic manga "dot" pattern
+        h, w = gray.shape
+        dithered = gray.astype(np.float32)
+        
+        for y in range(h - 1):
+            for x in range(1, w - 1):
+                old_pixel = dithered[y, x]
+                new_pixel = 255 if old_pixel > 127 else 0
+                dithered[y, x] = new_pixel
+                error = old_pixel - new_pixel
+                
+                # Distribute error to neighbors (Floyd-Steinberg weights)
+                dithered[y, x + 1] += error * 7 / 16
+                dithered[y + 1, x - 1] += error * 3 / 16
+                dithered[y + 1, x] += error * 5 / 16
+                dithered[y + 1, x + 1] += error * 1 / 16
+        
+        # Clip values and convert back to uint8
+        dithered = np.clip(dithered, 0, 255).astype(np.uint8)
+        
+        # Convert back to RGB (3-channel grayscale for consistency)
+        dithered_rgb = cv2.cvtColor(dithered, cv2.COLOR_GRAY2RGB)
+        
+        print("   ✅ Screentone applied")
+        return Image.fromarray(dithered_rgb)
     
     def _create_pdf(self, chapter_pages: List[Dict]) -> str:
         """Create high-quality PDF from manga pages with proper metadata."""

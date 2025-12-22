@@ -16,9 +16,10 @@ export default function CreatePage() {
     const [storyPrompt, setStoryPrompt] = useState("");
     const [title, setTitle] = useState("");
     const [style, setStyle] = useState<"bw_manga" | "color_anime">("bw_manga");
-    const [layout, setLayout] = useState<"2x2" | "2x3" | "full">("2x2");
+    // V4: "dynamic" lets AI choose layouts based on page archetypes
+    const [layout, setLayout] = useState<"dynamic" | "2x2" | "2x3" | "full">("dynamic");
     const [pageCount, setPageCount] = useState(1);
-    const [imageProvider, setImageProvider] = useState<"pollinations" | "nvidia">("pollinations");
+    const [imageProvider, setImageProvider] = useState<"pollinations" | "comfyui" | "nvidia">("pollinations");
     const [characters, setCharacters] = useState<Character[]>([
         { id: "1", name: "Akira", role: "Protagonist", appearance: "Spiky blue hair, scar on left cheek. Stoic expression." }
     ]);
@@ -339,6 +340,26 @@ export default function CreatePage() {
                                     <input
                                         type="radio"
                                         name="provider"
+                                        checked={imageProvider === "comfyui"}
+                                        onChange={() => setImageProvider("comfyui")}
+                                        className="peer sr-only"
+                                    />
+                                    <div className="rounded-lg p-4 border-2 border-transparent peer-checked:border-[#38e07b] peer-checked:bg-[#38e07b]/10 bg-black/20 transition-all">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-white font-bold">ComfyUI (Local)</p>
+                                                <p className="text-white/50 text-xs">Z-Image Hybrid • Best Quality • Requires Local Setup</p>
+                                            </div>
+                                            <div className="text-[#38e07b] opacity-0 peer-checked:opacity-100 transition-opacity">
+                                                <span className="material-symbols-outlined filled">check_circle</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </label>
+                                <label className="cursor-pointer relative group">
+                                    <input
+                                        type="radio"
+                                        name="provider"
                                         checked={imageProvider === "nvidia"}
                                         onChange={() => setImageProvider("nvidia")}
                                         className="peer sr-only"
@@ -363,7 +384,23 @@ export default function CreatePage() {
                             <h3 className="text-white text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
                                 <span className="material-symbols-outlined text-[#38e07b] text-[18px]">grid_view</span> Panel Layout
                             </h3>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-4 gap-3">
+                                {/* V4: Dynamic AI Layout (Default) */}
+                                <label className="cursor-pointer group">
+                                    <input
+                                        type="radio"
+                                        name="layout"
+                                        checked={layout === "dynamic"}
+                                        onChange={() => setLayout("dynamic")}
+                                        className="peer sr-only"
+                                    />
+                                    <div className="aspect-square bg-white/5 rounded-lg border border-white/10 peer-checked:border-[#38e07b] peer-checked:bg-[#38e07b]/10 peer-checked:shadow-neon transition-all flex flex-col items-center justify-center gap-2 group-hover:border-white/30">
+                                        <div className="w-10 h-10 flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-white/80 text-2xl">auto_awesome</span>
+                                        </div>
+                                        <span className="text-xs text-white/60 font-medium">AI</span>
+                                    </div>
+                                </label>
                                 {["2x2", "2x3", "full"].map((opt) => (
                                     <label key={opt} className="cursor-pointer group">
                                         <input
@@ -389,11 +426,12 @@ export default function CreatePage() {
                                                 </>}
                                                 {opt === "full" && <div className="bg-white/80 rounded-sm h-full"></div>}
                                             </div>
-                                            <span className="text-xs text-white/60 font-medium">{opt === "full" ? "Full Pg" : opt}</span>
+                                            <span className="text-xs text-white/60 font-medium">{opt === "full" ? "Full" : opt}</span>
                                         </div>
                                     </label>
                                 ))}
                             </div>
+                            <p className="text-xs text-white/40 mt-2 italic">💡 "AI" mode uses dynamic layouts based on page content (recommended)</p>
                         </div>
 
                         {/* Chapter Settings */}
@@ -442,10 +480,10 @@ export default function CreatePage() {
                             )}
                             <div className="flex items-center justify-between mb-3 px-1">
                                 <div className="flex items-center gap-1.5 text-white/70 text-xs font-medium">
-                                    <span className="material-symbols-outlined text-[#38e07b] text-[16px]">bolt</span>
-                                    Powered by <span className="text-white font-bold">Pollinations.ai</span>
+                                    <span className="material-symbols-outlined text-[#38e07b] text-[16px]">{imageProvider === "comfyui" ? "computer" : "bolt"}</span>
+                                    Powered by <span className="text-white font-bold">{imageProvider === "comfyui" ? "ComfyUI (Local)" : imageProvider === "nvidia" ? "NVIDIA FLUX" : "Pollinations.ai"}</span>
                                 </div>
-                                <div className="text-xs text-white/40">Free • No API Key</div>
+                                <div className="text-xs text-white/40">{imageProvider === "comfyui" ? "Local • Best Quality" : imageProvider === "nvidia" ? "Premium • API Key" : "Free • No API Key"}</div>
                             </div>
                             <button
                                 onClick={handleGenerate}
