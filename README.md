@@ -6,6 +6,8 @@
 
 **From a single story prompt to a fully formatted manga — with consistent characters, dynamic layouts, and intelligent dialogue placement.**
 
+[![Live App](https://img.shields.io/badge/Live_App-Visit%20Now-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://manga-gen-ai-pipeline.vercel.app/)
+[![API Status](https://img.shields.io/badge/API_Status-Online-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://manga-gen-ai-pipeline.onrender.com)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Next.js](https://img.shields.io/badge/Next.js_16-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
