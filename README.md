@@ -275,8 +275,8 @@ MIT License — use it, break it, make it better.
 
 <div align="center">
 
-**Made by [Barun](https://github.com/Barun-2005)**
+**Built by [Barun](https://github.com/Barun-2005)** for the love of manga and the community around it.
 
-*A 2-year passion project.*
+*What started as a weekend experiment took two years to get to something I'd call acceptable. There's still so much to improve — but it finally works, and that's a start.*
 
 </div>
