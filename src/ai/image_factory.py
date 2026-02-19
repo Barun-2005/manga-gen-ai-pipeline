@@ -46,17 +46,180 @@ class ImageProvider(ABC):
         pass
 
 
-class PollinationsProvider(ImageProvider):
+class FluxProvider(ImageProvider):
     """
-    Pollinations - Free image generation API.
+    Flux Premium Engine - High quality manga with IP-Adapter for character consistency.
     
-    No API key required!
+    Variants:
+    - flux_dev: 12 steps, ~90s, highest quality
+    - flux_schnell: 4 steps, ~35s, faster with good quality
+    
+    Features:
+    - DualCLIP (T5 + CLIP-L) for better prompt understanding
+    - IP-Adapter for character reference consistency
+    - Sentence-based prompts (not Danbooru tags)
+    """
+    
+    VARIANTS = {
+        "flux_dev": {"unet": "flux1-dev-Q5_K_S.gguf", "steps": 12},
+        "flux_schnell": {"unet": "flux1-schnell-Q5_K_S.gguf", "steps": 4}
+    }
+    
+    def __init__(
+        self,
+        variant: str = "flux_dev",
+        server_url: str = "http://127.0.0.1:8188",
+        use_ip_adapter: bool = True
+    ):
+        self.variant = variant
+        self.config = self.VARIANTS.get(variant, self.VARIANTS["flux_dev"])
+        self.server_url = server_url or os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188")
+        self.use_ip_adapter = use_ip_adapter
+        
+    def is_available(self) -> bool:
+        """Check if ComfyUI is running."""
+        try:
+            import httpx
+            response = httpx.get(f"{self.server_url}/system_stats", timeout=2.0)
+            return response.status_code == 200
+        except:
+            return False
+    
+    @property
+    def name(self) -> str:
+        return f"Flux Premium ({self.variant})"
+    
+    def _get_workflow(self) -> Dict:
+        """Get Flux workflow with DualCLIP and optional IP-Adapter."""
+        return {
+            "11": {"class_type": "DualCLIPLoaderGGUF", "inputs": {
+                "clip_name1": "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+                "clip_name2": "clip_l.safetensors", "type": "flux"
+            }},
+            "12": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": self.config["unet"]}},
+            "6": {"class_type": "CLIPTextEncodeFlux", "inputs": {
+                "clip_l": "", "t5xxl": "", "guidance": 3.5, "clip": ["11", 0]
+            }},
+            "7": {"class_type": "CLIPTextEncodeFlux", "inputs": {
+                "clip_l": "", "t5xxl": "", "guidance": 3.5, "clip": ["11", 0]
+            }},
+            "5": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024, "batch_size": 1}},
+            "3": {"class_type": "KSampler", "inputs": {
+                "seed": 42, "steps": self.config["steps"], "cfg": 1.0,
+                "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
+                "model": ["12", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]
+            }},
+            "10": {"class_type": "VAELoader", "inputs": {"vae_name": "ae.safetensors"}},
+            "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["10", 0]}},
+            "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "flux_manga", "images": ["8", 0]}}
+        }
+    
+    def _add_ip_adapter(self, workflow: Dict, ref_image: str) -> Dict:
+        """Add IP-Adapter nodes for character FACE consistency."""
+        # ═══════════════════════════════════════════════════════════════
+        # IP-ADAPTER FOR FACE LOCKING - HARDCODED STRENGTH 0.80
+        # ═══════════════════════════════════════════════════════════════
+        print(f"")
+        print(f"   🎭 ════════════════════════════════════════════════════════")
+        print(f"   🎭 IP-ADAPTER: ACTIVE")
+        print(f"   🎭 Reference: {ref_image}")
+        print(f"   🎭 Strength: 0.80 (Face Lock Mode)")
+        print(f"   🎭 ════════════════════════════════════════════════════════")
+        print(f"")
+        
+        workflow["20"] = {"class_type": "LoadImage", "inputs": {"image": ref_image, "upload": "image"}}
+        workflow["21"] = {"class_type": "ImageScale", "inputs": {
+            "image": ["20", 0], "upscale_method": "nearest-exact", "width": 1024, "height": 1024, "crop": "disabled"
+        }}
+        workflow["22"] = {"class_type": "LoadFluxIPAdapter", "inputs": {
+            "ip_adapter_path": "xlabs/ipadapters/ip_adapter.safetensors",
+            "clip_vision_path": "CLIP-ViT-H-14.safetensors", "provider": "CPU"
+        }}
+        # HARDCODED: Strength 0.80 for face consistency
+        workflow["23"] = {"class_type": "ApplyFluxIPAdapter", "inputs": {
+            "model": ["12", 0], "ip_adapter_flux": ["22", 0], "image": ["21", 0], "strength": 0.80
+        }}
+        workflow["3"]["inputs"]["model"] = ["23", 0]
+        return workflow
+    
+    async def generate(self, prompt: str, width: int = 1024, height: int = 1024, **kwargs) -> bytes:
+        """Generate image using Flux Premium workflow."""
+        if not self.is_available():
+            raise RuntimeError("ComfyUI not available. Start with: py -3.10 ComfyUI/main.py --novram")
+        
+        import httpx
+        workflow = self._get_workflow()
+        
+        # Format dual prompts for Flux
+        clip_l = f"manga panel, professional illustration, {prompt[:100]}"
+        t5xxl = f"Professional manga illustration: {prompt}. Clean black ink linework, high contrast, Japanese manga style."
+        workflow["6"]["inputs"]["clip_l"] = clip_l
+        workflow["6"]["inputs"]["t5xxl"] = t5xxl
+        
+        # Set dimensions and seed
+        workflow["5"]["inputs"]["width"] = width
+        workflow["5"]["inputs"]["height"] = height
+        workflow["3"]["inputs"]["seed"] = kwargs.get("seed", 42)
+        
+        # Add IP-Adapter if reference provided
+        ref_image = kwargs.get("reference_image")
+        if self.use_ip_adapter and ref_image:
+            workflow = self._add_ip_adapter(workflow, ref_image)
+            print(f"   🎭 IP-Adapter: ACTIVE (ref: {ref_image})")
+        elif self.use_ip_adapter:
+            print(f"   🎭 IP-Adapter: READY (no reference image this panel)")
+        
+        workflow["9"]["inputs"]["filename_prefix"] = f"flux_manga/{kwargs.get('panel_id', 'panel')}"
+        print(f"   🎨 Flux {self.variant}: {prompt[:60]}... ({self.config['steps']} steps)")
+        
+        # DEBUG: Print complete workflow JSON
+        print(f"")
+        print(f"   📋 ═══════════════════════════════════════════════════════")
+        print(f"   📋 DEBUG: COMPLETE WORKFLOW JSON")
+        print(f"   📋 ═══════════════════════════════════════════════════════")
+        print(json.dumps(workflow, indent=2))
+        print(f"   📋 ═══════════════════════════════════════════════════════")
+        print(f"")
+        
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(f"{self.server_url}/prompt", json={"prompt": workflow})
+            response.raise_for_status()
+            prompt_id = response.json()["prompt_id"]
+            
+            max_wait = 180 if self.variant == "flux_dev" else 90
+            for attempt in range(max_wait):
+                await asyncio.sleep(2)
+                history = await client.get(f"{self.server_url}/history/{prompt_id}")
+                if history.status_code == 200:
+                    data = history.json()
+                    if prompt_id in data and data[prompt_id].get("outputs"):
+                        for node_id, output in data[prompt_id]["outputs"].items():
+                            if "images" in output:
+                                img_data = output["images"][0]
+                                img_response = await client.get(f"{self.server_url}/view", params={
+                                    "filename": img_data["filename"],
+                                    "subfolder": img_data.get("subfolder", ""),
+                                    "type": img_data["type"]
+                                })
+                                print(f"✅ Flux generated in ~{attempt * 2}s")
+                                return img_response.content
+        
+        raise RuntimeError(f"Flux generation timed out")
+
+
+class PollinationsProvider(ImageProvider):
+
+    """
+    Pollinations - AI image generation via gen.pollinations.ai.
+    
+    Requires API key (set POLLINATIONS_API_KEY in .env).
+    Get your key at: https://enter.pollinations.ai
     Supports: width, height, seed, nologo, enhance, model
     """
     
-    BASE_URL = "https://image.pollinations.ai/prompt"
+    BASE_URL = "https://gen.pollinations.ai/image"
     
-    # Available models
+    # Available models (2026 updated list)
     MODELS = {
         "flux": "flux",                    # Default, high quality
         "turbo": "turbo",                  # Faster but lower quality
@@ -66,9 +229,10 @@ class PollinationsProvider(ImageProvider):
     
     def __init__(self, model: str = "flux"):
         self.model = self.MODELS.get(model, model)
+        self.api_key = os.environ.get("POLLINATIONS_API_KEY", "")
         
     def is_available(self) -> bool:
-        return True  # Always available, no API key needed
+        return bool(self.api_key)
     
     @property
     def name(self) -> str:
@@ -81,7 +245,7 @@ class PollinationsProvider(ImageProvider):
         height: int = 768,
         **kwargs
     ) -> bytes:
-        """Generate image using Pollinations API."""
+        """Generate image using Pollinations gen.pollinations.ai API."""
         import httpx
         from urllib.parse import quote
         import random
@@ -100,8 +264,12 @@ class PollinationsProvider(ImageProvider):
         if enhance:
             url += "&enhance=true"
         
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.get(url)
+            response = await client.get(url, headers=headers)
             response.raise_for_status()
             return response.content
 
@@ -366,9 +534,13 @@ class FallbackImageProvider(ImageProvider):
 class ImageFactory:
     """Factory for creating image providers."""
     
+    # Engine options: z_image (standard), flux_dev (premium), flux_schnell (speed)
     PROVIDERS = {
         "pollinations": PollinationsProvider,
         "comfyui": ComfyUIProvider,
+        "z_image": ComfyUIProvider,  # Alias for clarity
+        "flux_dev": lambda **kw: FluxProvider(variant="flux_dev", **kw),
+        "flux_schnell": lambda **kw: FluxProvider(variant="flux_schnell", **kw),
         "auto": FallbackImageProvider,
     }
     
@@ -378,7 +550,11 @@ class ImageFactory:
         Create an image provider.
         
         Args:
-            provider: "pollinations", "comfyui", or "auto" (default)
+            provider: Engine to use:
+                - "z_image" (standard, 8 steps, tags)
+                - "flux_dev" (premium, 12 steps, sentences)
+                - "flux_schnell" (fast, 4 steps, sentences)
+                - "auto" (default fallback)
             **kwargs: Provider-specific options
             
         Returns:
@@ -387,10 +563,14 @@ class ImageFactory:
         provider = provider or "auto"
         
         if provider.lower() not in cls.PROVIDERS:
-            raise ValueError(f"Unknown provider: {provider}")
+            raise ValueError(f"Unknown provider/engine: {provider}")
         
-        print(f"🔧 Initializing image provider: {provider}")
-        return cls.PROVIDERS[provider.lower()](**kwargs)
+        print(f"🔧 Initializing engine: {provider}")
+        
+        provider_factory = cls.PROVIDERS[provider.lower()]
+        if callable(provider_factory) and not isinstance(provider_factory, type):
+            return provider_factory(**kwargs)
+        return provider_factory(**kwargs)
     
     @classmethod
     def list_available(cls):
@@ -400,7 +580,10 @@ class ImageFactory:
             if name == "auto":
                 continue
             try:
-                p = provider_cls()
+                if callable(provider_cls) and not isinstance(provider_cls, type):
+                    p = provider_cls()
+                else:
+                    p = provider_cls()
                 if p.is_available():
                     available.append(p.name)
             except:
@@ -409,15 +592,20 @@ class ImageFactory:
 
 
 # Convenience function - USE THIS!
-def get_image_provider(provider: Optional[str] = None, **kwargs) -> ImageProvider:
+def get_image_provider(engine: Optional[str] = None, **kwargs) -> ImageProvider:
     """
     Get an image provider instance.
     
     Args:
-        provider: "auto" (default), "pollinations", "comfyui"
-        **kwargs: Provider options (model, server_url, etc.)
+        engine: Engine to use:
+            - "z_image" or "comfyui": Standard (Z-Image, 8 steps, tag prompts)
+            - "flux_dev": Premium (Flux Dev, 12 steps, sentence prompts)
+            - "flux_schnell": Speed (Flux Schnell, 4 steps, sentence prompts)
+            - "auto": Smart fallback (default)
+        **kwargs: Provider options (server_url, use_ip_adapter, etc.)
         
     Returns:
-        ImageProvider with smart fallback
+        ImageProvider instance
     """
-    return ImageFactory.create(provider, **kwargs)
+    return ImageFactory.create(engine, **kwargs)
+

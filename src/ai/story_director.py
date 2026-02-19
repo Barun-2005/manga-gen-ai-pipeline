@@ -50,7 +50,8 @@ class StoryDirector:
         page_count: int,
         panels_per_page: int,  # Can be None for V4 dynamic mode
         style: str,
-        is_complete_story: bool = False
+        is_complete_story: bool = False,
+        engine: str = "z_image"  # NEW: "z_image", "flux_dev", "flux_schnell"
     ) -> Dict:
         """
         Plan an entire chapter with intelligent story pacing.
@@ -63,6 +64,7 @@ class StoryDirector:
             panels_per_page: Panels per page (4 for 2x2, 6 for 2x3), or None for V4 DYNAMIC mode
             style: 'color_anime' or 'bw_manga'
             is_complete_story: If True, wrap up story. If False, leave for continuation.
+            engine: Image engine - "z_image" (tags), "flux_dev" or "flux_schnell" (sentences)
         
         Returns:
             Complete chapter plan with all pages, panels, and dialogue
@@ -79,6 +81,35 @@ class StoryDirector:
             panels_per_page_text = str(panels_per_page)
             total_panels_text = str(total_panels)
         
+        # ENGINE MODE: Flux uses sentence prompts, Z-Image uses tags
+        is_flux_mode = engine.startswith("flux")
+        if is_flux_mode:
+            # FLUX PRO MODE: Cinematographer approach
+            print(f"")
+            print(f"🚀 ═══════════════════════════════════════════════════════")
+            print(f"🚀 MODE: FLUX PRO (Natural Language + IP-Adapter)")
+            print(f"🚀 Engine: {engine.upper()} | Style: Cinematographer")
+            print(f"🚀 ═══════════════════════════════════════════════════════")
+            print(f"")
+            
+            visual_prompt_instruction = """
+   - **Visual description**: DESCRIPTIVE CINEMATIC SENTENCE (Flux Premium)
+     * You are a CINEMATOGRAPHER describing each panel as a film shot
+     * Format: "[Camera angle] of [subject] in [setting], [lighting], [atmosphere]"
+     * Example: "Low angle shot of a determined samurai with wild black hair unsheathing his katana in a rain-soaked alley, dramatic neon reflections on wet pavement, cyberpunk noir atmosphere"
+     * Include: character details, pose, expression, environment, lighting quality
+     * FORBIDDEN: Danbooru tags, parentheses weights like (masterpiece:1.2), comma-separated keywords
+     * Write like a film director describing a shot - rich, atmospheric, visual
+"""
+        else:
+            # Z-IMAGE MODE: Tag-based for consistency
+            print(f"📷 MODE: Z-IMAGE STANDARD (Tag-Based Prompts)")
+            visual_prompt_instruction = """
+   - **Visual description**: COMMA-SEPARATED TAGS for image generation
+     * Z-Image format: "1boy, spiky_hair, katana, cherry_blossoms, sunset, dramatic_lighting"
+     * Include: character tags, action, setting, mood
+     * Include style: """ + ("'monochrome, manga, ink lineart'" if style == 'bw_manga' else "'anime style, vibrant colors'")
+        
         # Format character info
         char_info = "\n".join([
             f"- {c['name']}: {c.get('appearance', 'no description')} | Personality: {c.get('personality', 'not specified')}"
@@ -87,6 +118,7 @@ class StoryDirector:
         
         # DYNAMIC PACING - Let LLM analyze the story prompt to decide pacing
         # (Removed hardcoded "1 page = intro only" type templates)
+
         
         # Multi-chapter detection for 10+ pages
         is_multi_chapter = page_count >= 10
@@ -284,12 +316,7 @@ Example: "Kenji, still holding the glowing sword, faces the enemy directly"
    - **Camera angle**: straight-on | dutch angle | low angle | high angle
    - **Composition**: rule of thirds | center frame | dynamic diagonal | symmetrical
    - **Lighting/Mood**: dramatic shadows | soft lighting | harsh contrast | backlit | rim light | moody | bright
-   - **Visual description**: NATURAL LANGUAGE SENTENCE describing the scene
-     * Z-Image format: "A [character] [action] in a [location], [mood/atmosphere]"
-     * Example: "A weathered samurai with spiky black hair draws his katana in a rain-soaked alley, dramatic shadows"
-     * Include style: {'black and white manga style, ink lineart, high contrast' if style == 'bw_manga' else 'vibrant anime style, cel shading'}
-   - **style_tags**: Danbooru tags for Animagine refinement (ACTION pages only)
-     * Format: "1boy, spiky_hair, katana, dynamic_pose, action_lines, rain"
+{visual_prompt_instruction}
    - Characters present: List character names
    - Dialogue: Use the format specified above (speech/thought/narrator)
 
@@ -388,8 +415,42 @@ Create a visually compelling manga chapter now (dialogue will be polished by Scr
         print(f"   Story: {story_prompt[:100]}...")
         
         try:
-            # Use FallbackLLM - auto-switches on rate limit!
-            content = self.llm.generate(prompt, max_tokens=8000)
+            # ═══════════════════════════════════════════════════════════════
+            # HARDCODED MODEL SWITCH - USER PROVIDED VISUAL PROOF
+            # ═══════════════════════════════════════════════════════════════
+            if is_flux_mode:
+                # FLUX PRO MODE: Use GPT-OSS-120b (Best Reasoning on Groq Free)
+                model_id = "openai/gpt-oss-120b"
+                print(f"")
+                print(f"   🧠 ════════════════════════════════════════════════════════")
+                print(f"   🧠 FLUX PRO BRAIN: {model_id}")
+                print(f"   🧠 Mode: Cinematographer (Natural Language Prompts)")
+                print(f"   🧠 ════════════════════════════════════════════════════════")
+                print(f"")
+                
+                # DEBUG: Print first 500 chars of prompt to verify cinematographer style
+                print(f"   📝 DEBUG: Prompt Preview (first 500 chars):")
+                print(f"   {prompt[:500]}...")
+                print(f"")
+                
+                try:
+                    content = self.llm.generate(prompt, max_tokens=8000, model=model_id)
+                except Exception as llm_error:
+                    print(f"")
+                    print(f"   ❌ ════════════════════════════════════════════════════════")
+                    print(f"   ❌ LLM ERROR: {model_id} FAILED!")
+                    print(f"   ❌ Error: {llm_error}")
+                    print(f"   ❌ Falling back to mixtral-8x7b-32768...")
+                    print(f"   ❌ ════════════════════════════════════════════════════════")
+                    print(f"")
+                    # Fallback to mixtral
+                    model_id = "mixtral-8x7b-32768"
+                    content = self.llm.generate(prompt, max_tokens=8000, model=model_id)
+            else:
+                # Z-IMAGE MODE: Standard Llama for tag-based prompts
+                model_id = "llama-3.3-70b-versatile"
+                print(f"   🧠 Z-Image Brain: {model_id}")
+                content = self.llm.generate(prompt, max_tokens=8000, model=model_id)
             
             # Extract JSON from response
             if "```json" in content:
@@ -419,6 +480,10 @@ Create a visually compelling manga chapter now (dialogue will be polished by Scr
             # PHASE 2: THE WRITER (Script Doctor)
             # Refine dialogue without touching visual fields
             chapter_plan = self.refine_dialogue(chapter_plan)
+            
+            # PRO MODE: Generate cover art for Flux engine
+            if is_flux_mode:
+                chapter_plan = self._add_pro_features(chapter_plan, story_prompt, characters)
             
             return chapter_plan
             
@@ -452,6 +517,85 @@ Create a visually compelling manga chapter now (dialogue will be polished by Scr
                     dialogue['dialogue_id'] = f"dlg_{uuid.uuid4().hex[:8]}"
         
         return chapter_plan
+    
+    def _add_pro_features(self, chapter_plan: Dict, story_prompt: str, characters: List[Dict]) -> Dict:
+        """
+        PRO MODE: Add premium features for Flux engine.
+        
+        Features:
+        - Cover art prompt (for Page 0 / Volume Cover)
+        - Chapter title styling
+        - Arc name if multi-chapter
+        """
+        chapter_title = chapter_plan.get('chapter_title', 'Untitled Chapter')
+        char_names = [c.get('name', 'Character') for c in characters[:3]]  # Top 3 chars
+        char_appearances = [c.get('appearance', '') for c in characters[:2]]  # Top 2 for cover
+        
+        # DEBUG: Print what we're working with
+        print(f"")
+        print(f"   📖 ════════════════════════════════════════════════════════")
+        print(f"   📖 GENERATING COVER ART FOR: {chapter_title}")
+        print(f"   📖 Characters: {char_names}")
+        print(f"   📖 ════════════════════════════════════════════════════════")
+        print(f"")
+        
+        # Generate cover art prompt (descriptive sentence for Flux)
+        cover_prompt = f"A dramatic manga volume cover illustration: {chapter_title}. "
+        if char_appearances:
+            cover_prompt += f"Featuring {', '.join(char_names)}. "
+            cover_prompt += f"{char_appearances[0][:100]}. "
+        cover_prompt += "Dynamic composition, professional manga cover art style, bold title typography space at top, dramatic lighting, high quality illustration."
+        
+        # DEBUG: Print the exact cover prompt
+        print(f"   📖 COVER PROMPT:")
+        print(f"   {cover_prompt}")
+        print(f"")
+        
+        # Add cover_art to chapter plan
+        chapter_plan['cover_art'] = {
+            'prompt': cover_prompt,
+            'width': 1024,
+            'height': 1440,  # Manga cover aspect ratio (taller)
+            'is_cover': True
+        }
+        
+        # INSERT PAGE 0: Cover Art Page (prepend to pages array)
+        cover_page = {
+            'page_id': f"page_cover_{uuid.uuid4().hex[:8]}",
+            'page_number': 0,
+            'archetype': 'cover',
+            'layout_template': 'full',
+            'is_cover': True,
+            'panels': [{
+                'panel_id': f"panel_cover_{uuid.uuid4().hex[:8]}",
+                'panel_number': 1,
+                'visual_prompt': cover_prompt,
+                'dialogue': [],
+                'is_cover': True
+            }]
+        }
+        
+        # Prepend cover page and renumber existing pages
+        existing_pages = chapter_plan.get('pages', [])
+        for page in existing_pages:
+            page['page_number'] = page.get('page_number', 1) + 1  # Shift by 1
+        
+        chapter_plan['pages'] = [cover_page] + existing_pages
+        
+        # Add Pro metadata
+        chapter_plan['pro_mode'] = True
+        chapter_plan['engine'] = 'flux_dev'  # Mark which engine was used
+        
+        print(f"")
+        print(f"   📖 ═══════════════════════════════════════════════════")
+        print(f"   📖 COVER ART: Page 0 inserted with volume cover prompt")
+        print(f"   📖 Chapter: '{chapter_title}'")
+        print(f"   📖 Total Pages: {len(chapter_plan['pages'])} (including cover)")
+        print(f"   📖 ═══════════════════════════════════════════════════")
+        print(f"")
+        
+        return chapter_plan
+
     
     def refine_dialogue(self, chapter_plan: Dict) -> Dict:
         """

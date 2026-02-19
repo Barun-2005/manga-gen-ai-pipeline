@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import DialogueLayer, { BubbleData } from "@/components/DialogueLayer";
+import { API_URL } from "@/config";
 import StoryViewer from "@/components/StoryViewer";
 
 interface DialogueBubble {
@@ -34,6 +35,7 @@ interface JobStatus {
     status: string;
     result?: {
         title: string;
+        manga_title?: string;
         pages: PageData[];
         pdf: string;
         elapsed_seconds: number;
@@ -77,8 +79,8 @@ export default function PreviewPage() {
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error", text: string } | null>(null);
 
-    // Story Viewer panel state
-    const [showStoryPanel, setShowStoryPanel] = useState(true);
+    // Sidebar tab state: "story" | "edit" | "style"
+    const [sidebarTab, setSidebarTab] = useState<"story" | "edit" | "style">("edit");
 
     // Dialogue regeneration state
     const [regeneratingDialogue, setRegeneratingDialogue] = useState(false);
@@ -300,7 +302,7 @@ export default function PreviewPage() {
 
         const fetchJob = async () => {
             try {
-                const response = await fetch(`http://localhost:8000/api/status/${jobId}`);
+                const response = await fetch(`${API_URL}/api/status/${jobId}`);
                 if (response.ok) {
                     const data = await response.json();
                     setJob(data);
@@ -313,7 +315,7 @@ export default function PreviewPage() {
 
                     // Also fetch saved dialogues if this is a saved project
                     try {
-                        const dialogueResponse = await fetch(`http://localhost:8000/api/projects/${jobId}/dialogues`);
+                        const dialogueResponse = await fetch(`${API_URL}/api/projects/${jobId}/dialogues`);
                         if (dialogueResponse.ok) {
                             const dialogueData = await dialogueResponse.json();
                             if (dialogueData.dialogues && Object.keys(dialogueData.dialogues).length > 0) {
@@ -438,7 +440,7 @@ export default function PreviewPage() {
     const downloadFile = (type: "pdf" | "png" | "zip") => {
         // For PDF export, send dialogue data so backend renders bubbles on images
         const dialoguesParam = type === "pdf" ? `?dialogues=${encodeURIComponent(JSON.stringify(panelDialogues))}` : "";
-        window.open(`http://localhost:8000/api/download/${jobId}/${type}${dialoguesParam}`, "_blank");
+        window.open(`${API_URL}/api/download/${jobId}/${type}${dialoguesParam}`, "_blank");
         setShowExportMenu(false);
     };
 
@@ -456,7 +458,7 @@ export default function PreviewPage() {
         setSaveMessage(null);
 
         try {
-            const response = await fetch("http://localhost:8000/api/projects/save", {
+            const response = await fetch(`${API_URL}/api/projects/save`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -496,7 +498,7 @@ export default function PreviewPage() {
         setRegenerating(true);
 
         try {
-            const response = await fetch(`http://localhost:8000/api/regenerate/${jobId}`, {
+            const response = await fetch(`${API_URL}/api/regenerate/${jobId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -508,7 +510,7 @@ export default function PreviewPage() {
 
             if (response.ok) {
                 // Refresh job data to get new panel image
-                const jobResponse = await fetch(`http://localhost:8000/api/status/${jobId}`);
+                const jobResponse = await fetch(`${API_URL}/api/status/${jobId}`);
                 if (jobResponse.ok) {
                     const data = await jobResponse.json();
                     setJob(data);
@@ -529,7 +531,7 @@ export default function PreviewPage() {
         setRegeneratingDialogue(true);
 
         try {
-            const response = await fetch("http://localhost:8000/api/dialogues/regenerate", {
+            const response = await fetch(`${API_URL}/api/dialogues/regenerate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -749,7 +751,7 @@ export default function PreviewPage() {
                                     : "border-transparent hover:border-white/20"
                                     }`}>
                                     <img
-                                        src={`http://localhost:8000/api/preview/${jobId}/${page.page_number}`}
+                                        src={`${API_URL}/api/preview/${jobId}/${page.page_number}`}
                                         alt={`Page ${page.page_number}`}
                                         className={`w-full h-full object-cover ${currentPage !== page.page_number ? "grayscale" : ""}`}
                                     />
@@ -796,7 +798,7 @@ export default function PreviewPage() {
                             {currentPageData ? (
                                 <>
                                     <img
-                                        src={`http://localhost:8000/api/preview/${jobId}/${currentPage}`}
+                                        src={`${API_URL}/api/preview/${jobId}/${currentPage}`}
                                         alt={`Page ${currentPage}`}
                                         className="w-full h-full object-contain bg-white"
                                     />
@@ -897,251 +899,277 @@ export default function PreviewPage() {
                     </div>
                 </section>
 
-                {/* Right Sidebar: Editor Tools */}
+                {/* Right Sidebar: Editor Tools — Tabbed Layout */}
                 <aside className="w-80 bg-[#0a110e] border-l border-white/5 flex flex-col">
-                    {/* Header for Selected Item */}
-                    <div className="p-5 border-b border-white/5">
-                        <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                                <span className="material-symbols-outlined text-[#38e07b] text-sm">crop_free</span>
-                                <h3 className="font-bold text-xs uppercase tracking-wider text-white/50">
-                                    {selectedPanel !== null ? `Panel ${selectedPanel + 1} Selected` : "Select a Panel"}
-                                </h3>
+                    {/* Sidebar Header: Panel Info + Selected Bubble Quick Actions */}
+                    <div className="shrink-0 border-b border-white/5">
+                        <div className="px-4 pt-4 pb-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-[#38e07b] text-sm">crop_free</span>
+                                    <h3 className="font-bold text-sm text-white">
+                                        {selectedPanel !== null ? `Panel ${selectedPanel + 1}` : "Canvas"}
+                                    </h3>
+                                </div>
+                                {/* Quick Actions */}
+                                <div className="flex items-center gap-1">
+                                    {selectedBubble && (
+                                        <button
+                                            onClick={deleteSelectedBubble}
+                                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
+                                            title="Delete bubble (Del)"
+                                        >
+                                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            {/* Story Viewer Toggle */}
-                            <button
-                                onClick={() => setShowStoryPanel(!showStoryPanel)}
-                                className={`p-1.5 rounded-lg transition-colors ${showStoryPanel ? "bg-[#38e07b]/20 text-[#38e07b]" : "text-gray-400 hover:text-white hover:bg-white/10"}`}
-                                title={showStoryPanel ? "Hide Story Context" : "Show Story Context"}
-                            >
-                                <span className="material-symbols-outlined text-[18px]">menu_book</span>
-                            </button>
+                            {/* Selected Bubble Indicator */}
+                            {selectedBubble && (() => {
+                                const bubbleData = getSelectedBubbleData();
+                                return bubbleData ? (
+                                    <div className="mt-2 flex items-center gap-2 text-xs text-white/60 bg-[#16261e] rounded-lg px-3 py-1.5 border border-[#264532]">
+                                        <span className="material-symbols-outlined text-[14px] text-[#38e07b]">chat_bubble</span>
+                                        <span className="truncate flex-1">{bubbleData.text || "Empty bubble"}</span>
+                                        <span className="text-[10px] text-white/30 capitalize">{bubbleData.style}</span>
+                                    </div>
+                                ) : null;
+                            })()}
                         </div>
-                        <h2 className="text-lg font-bold text-white">
-                            {selectedPanel !== null ? "Edit Panel" : job?.result?.title || "Preview"}
-                        </h2>
+
+                        {/* Tab Navigation */}
+                        <div className="flex px-2">
+                            {([
+                                { id: "story" as const, icon: "menu_book", label: "Story" },
+                                { id: "edit" as const, icon: "edit", label: "Edit" },
+                                { id: "style" as const, icon: "palette", label: "Style" },
+                            ]).map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setSidebarTab(tab.id)}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium border-b-2 transition-colors ${sidebarTab === tab.id
+                                        ? "text-[#38e07b] border-[#38e07b] bg-[#38e07b]/5"
+                                        : "text-gray-500 border-transparent hover:text-white hover:border-white/20"
+                                        }`}
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">{tab.icon}</span>
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
-                    {/* Story Viewer Panel (Collapsible) */}
-                    {showStoryPanel && (
-                        <div className="h-64 border-b border-white/5">
-                            <StoryViewer
-                                jobId={jobId}
-                                currentPage={currentPage}
-                                selectedPanel={selectedPanel}
-                                onSelectPage={(pageNum) => setCurrentPage(pageNum)}
-                            />
-                        </div>
-                    )}
-
-                    <div className="flex-1 overflow-y-auto p-5 space-y-6">
-                        {selectedPanel !== null ? (
-                            <>
-                                {/* Panel Settings */}
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <h4 className="text-sm font-bold text-white">Panel Settings</h4>
-                                        <button
-                                            onClick={() => setRegenPrompt("")}
-                                            className="text-xs text-[#38e07b] hover:underline"
-                                        >
-                                            Reset
-                                        </button>
-                                    </div>
-                                    <div className="p-4 rounded-xl bg-[#16261e] border border-[#264532]">
-                                        <label className="text-xs font-semibold text-white/50 mb-2 block">
-                                            Regeneration Prompt (edit to improve)
-                                        </label>
-                                        <textarea
-                                            value={regenPrompt}
-                                            onChange={(e) => setRegenPrompt(e.target.value)}
-                                            placeholder="Describe how you want this panel regenerated... (e.g., 'close-up face, more dramatic shadows, angry expression')"
-                                            className="w-full h-20 bg-[#0a110e] border border-[#264532] rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#38e07b] resize-none mb-3"
-                                        />
-                                        <button
-                                            onClick={handleRegenerate}
-                                            disabled={regenerating}
-                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#38e07b] hover:bg-[#2bc968] text-[#0a110e] text-sm font-bold transition-colors disabled:opacity-50"
-                                        >
-                                            <span className={`material-symbols-outlined text-sm ${regenerating ? "animate-spin" : ""}`}>
-                                                autorenew
-                                            </span>
-                                            {regenerating ? "Regenerating..." : "Regenerate Panel"}
-                                        </button>
-                                    </div>
-
-                                    {/* Art Strength Slider */}
-                                    <div>
-                                        <label className="text-xs font-semibold text-white/50 mb-2 flex justify-between">
-                                            <span>Art Strength</span>
-                                            <span>75%</span>
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min="0"
-                                            max="100"
-                                            defaultValue="75"
-                                            className="w-full h-1 bg-[#264532] rounded-lg appearance-none cursor-pointer accent-[#38e07b]"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="h-px bg-white/5 w-full"></div>
-
-                                {/* Dialogue Editing */}
-                                <div className="space-y-4">
-                                    <h4 className="text-sm font-bold text-white">Dialogue & Bubbles</h4>
-
-                                    {/* AI Dialogue Regeneration (V3 Phase 4) */}
-                                    <div className="p-3 rounded-xl bg-gradient-to-br from-[#16261e] to-[#1a2a22] border border-[#38e07b]/20">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <span className="material-symbols-outlined text-[#38e07b] text-sm">auto_awesome</span>
-                                            <label className="text-xs font-semibold text-[#38e07b]">AI Dialogue</label>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={dialogueStyleHint}
-                                            onChange={(e) => setDialogueStyleHint(e.target.value)}
-                                            placeholder="Style hint: more dramatic, funnier..."
-                                            className="w-full bg-[#0d1a14] border border-[#264532] rounded-lg py-2 px-3 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-[#38e07b] mb-2"
-                                        />
-                                        <button
-                                            onClick={handleRegenerateDialogue}
-                                            disabled={regeneratingDialogue}
-                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#38e07b]/20 hover:bg-[#38e07b]/30 border border-[#38e07b]/40 text-[#38e07b] text-xs font-bold transition-colors disabled:opacity-50"
-                                        >
-                                            <span className={`material-symbols-outlined text-sm ${regeneratingDialogue ? "animate-spin" : ""}`}>
-                                                {regeneratingDialogue ? "sync" : "auto_fix_high"}
-                                            </span>
-                                            {regeneratingDialogue ? "Regenerating..." : "Regenerate All Dialogue"}
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <label className="text-xs font-semibold text-white/50 block">Content</label>
-                                        <textarea
-                                            value={editingText}
-                                            onChange={(e) => updateBubbleText(e.target.value)}
-                                            placeholder="Enter dialogue text..."
-                                            className="w-full bg-[#16261e] border border-[#264532] rounded-xl p-3 text-sm text-white focus:ring-2 focus:ring-[#38e07b] focus:border-transparent outline-none resize-none"
-                                            rows={3}
-                                        />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-white/50 block">Font</label>
-                                            <select
-                                                value={fontFamily}
-                                                onChange={(e) => updateBubbleFontFamily(e.target.value)}
-                                                disabled={!selectedBubble}
-                                                className="w-full bg-[#16261e] border border-[#264532] rounded-lg py-2 px-3 text-xs text-white appearance-none disabled:opacity-50"
-                                            >
-                                                <option value="Manga Sans">Manga Sans</option>
-                                                <option value="Action Bold">Action Bold</option>
-                                                <option value="Whisper Thin">Whisper Thin</option>
-                                                <option value="Comic Sans MS">Comic Style</option>
-                                                <option value="Arial Black">Impact Bold</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-semibold text-white/50 block">Size</label>
-                                            <div className="flex items-center bg-[#16261e] border border-[#264532] rounded-lg overflow-hidden">
-                                                <button
-                                                    onClick={() => updateBubbleFontSize(-2)}
-                                                    disabled={!selectedBubble}
-                                                    className="p-2 hover:bg-[#264532] disabled:opacity-50"
-                                                >
-                                                    <span className="material-symbols-outlined text-xs text-white">remove</span>
-                                                </button>
-                                                <input
-                                                    type="text"
-                                                    value={fontSize}
-                                                    readOnly
-                                                    className="w-full bg-transparent text-center text-xs text-white border-none p-0"
-                                                />
-                                                <button
-                                                    onClick={() => updateBubbleFontSize(2)}
-                                                    disabled={!selectedBubble}
-                                                    className="p-2 hover:bg-[#264532] disabled:opacity-50"
-                                                >
-                                                    <span className="material-symbols-outlined text-xs text-white">add</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-white/50 block">Bubble Style</label>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {BUBBLE_STYLES.map((style) => (
-                                                <button
-                                                    key={style.id}
-                                                    onClick={() => updateBubbleStyle(style.id)}
-                                                    disabled={!selectedBubble}
-                                                    className={`aspect-square rounded-lg border-2 flex items-center justify-center transition-all disabled:opacity-50 ${bubbleStyle === style.id
-                                                        ? "border-[#38e07b] bg-[#38e07b]/10"
-                                                        : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50"
-                                                        }`}
-                                                    title={style.label}
-                                                >
-                                                    <span className="material-symbols-outlined text-white text-sm">
-                                                        {style.icon}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Tail Direction Control */}
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-white/50 block">Arrow Direction</label>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {[
-                                                { dir: "top" as const, icon: "arrow_upward", label: "Top" },
-                                                { dir: "bottom" as const, icon: "arrow_downward", label: "Bottom" },
-                                                { dir: "left" as const, icon: "arrow_back", label: "Left" },
-                                                { dir: "right" as const, icon: "arrow_forward", label: "Right" },
-                                            ].map((item) => (
-                                                <button
-                                                    key={item.dir}
-                                                    onClick={() => updateBubbleTailDirection(item.dir)}
-                                                    disabled={!selectedBubble}
-                                                    className={`aspect-square rounded-lg border-2 flex items-center justify-center transition-all disabled:opacity-50 ${tailDirection === item.dir
-                                                        ? "border-[#38e07b] bg-[#38e07b]/10"
-                                                        : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50"
-                                                        }`}
-                                                    title={item.label}
-                                                >
-                                                    <span className="material-symbols-outlined text-white text-sm">
-                                                        {item.icon}
-                                                    </span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
+                    {/* Tab Content — fills remaining height */}
+                    <div className="flex-1 overflow-y-auto">
+                        {sidebarTab === "story" ? (
+                            /* ═══ STORY TAB ═══ */
+                            <div className="h-full">
+                                <StoryViewer
+                                    jobId={jobId}
+                                    currentPage={currentPage}
+                                    selectedPanel={selectedPanel}
+                                    onSelectPage={(pageNum) => setCurrentPage(pageNum)}
+                                />
+                            </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center">
-                                <span className="material-symbols-outlined text-4xl text-white/20 mb-4">touch_app</span>
-                                <p className="text-white/50 text-sm">Click on a panel to edit</p>
-                                <p className="text-white/30 text-xs mt-2">You can regenerate images, edit dialogue, and customize bubble styles</p>
+                            /* ═══ EDIT & STYLE TABS (combined for simplicity, sectioned visually) ═══ */
+                            <div className="p-4 space-y-4">
+                                {selectedPanel !== null ? (
+                                    <>
+                                        {/* ═══ EDIT TAB SECTIONS ═══ */}
+                                        {sidebarTab === "edit" && (
+                                            <>
+                                                {/* ── Panel Regeneration ── */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2.5">
+                                                        <span className="material-symbols-outlined text-[#38e07b] text-sm">autorenew</span>
+                                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Regenerate Panel</h4>
+                                                    </div>
+                                                    <div className="bg-[#16261e] rounded-xl border border-[#264532] p-3 space-y-2.5">
+                                                        <textarea
+                                                            value={regenPrompt}
+                                                            onChange={(e) => setRegenPrompt(e.target.value)}
+                                                            placeholder="Describe how to regenerate... (e.g., 'close-up face, dramatic shadows')"
+                                                            className="w-full h-16 bg-[#0a110e] border border-[#264532] rounded-lg px-3 py-2 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-[#38e07b] resize-none"
+                                                        />
+                                                        <button
+                                                            onClick={handleRegenerate}
+                                                            disabled={regenerating}
+                                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#38e07b] hover:bg-[#2bc968] text-[#0a110e] text-xs font-bold transition-colors disabled:opacity-50"
+                                                        >
+                                                            <span className={`material-symbols-outlined text-sm ${regenerating ? "animate-spin" : ""}`}>autorenew</span>
+                                                            {regenerating ? "Regenerating..." : "Regenerate"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="h-px bg-white/5"></div>
+
+                                                {/* ── AI Dialogue Regeneration ── */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2.5">
+                                                        <span className="material-symbols-outlined text-[#38e07b] text-sm">auto_awesome</span>
+                                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">AI Dialogue</h4>
+                                                    </div>
+                                                    <div className="bg-gradient-to-br from-[#16261e] to-[#1a2a22] rounded-xl border border-[#38e07b]/20 p-3 space-y-2.5">
+                                                        <input
+                                                            type="text"
+                                                            value={dialogueStyleHint}
+                                                            onChange={(e) => setDialogueStyleHint(e.target.value)}
+                                                            placeholder="Style hint: dramatic, funnier, intense..."
+                                                            className="w-full bg-[#0d1a14] border border-[#264532] rounded-lg py-2 px-3 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-[#38e07b]"
+                                                        />
+                                                        <button
+                                                            onClick={handleRegenerateDialogue}
+                                                            disabled={regeneratingDialogue}
+                                                            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#38e07b]/20 hover:bg-[#38e07b]/30 border border-[#38e07b]/40 text-[#38e07b] text-xs font-bold transition-colors disabled:opacity-50"
+                                                        >
+                                                            <span className={`material-symbols-outlined text-sm ${regeneratingDialogue ? "animate-spin" : ""}`}>
+                                                                {regeneratingDialogue ? "sync" : "auto_fix_high"}
+                                                            </span>
+                                                            {regeneratingDialogue ? "Regenerating..." : "Regenerate Dialogue"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="h-px bg-white/5"></div>
+
+                                                {/* ── Bubble Text Editor ── */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2.5">
+                                                        <span className="material-symbols-outlined text-[#38e07b] text-sm">edit_note</span>
+                                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Bubble Text</h4>
+                                                    </div>
+                                                    <textarea
+                                                        value={editingText}
+                                                        onChange={(e) => updateBubbleText(e.target.value)}
+                                                        placeholder={selectedBubble ? "Edit dialogue text..." : "Select a bubble to edit..."}
+                                                        disabled={!selectedBubble}
+                                                        className="w-full bg-[#16261e] border border-[#264532] rounded-xl p-3 text-sm text-white focus:ring-2 focus:ring-[#38e07b] focus:border-transparent outline-none resize-none disabled:opacity-40"
+                                                        rows={2}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* ═══ STYLE TAB SECTIONS ═══ */}
+                                        {sidebarTab === "style" && (
+                                            <>
+                                                <div className="h-px bg-white/5"></div>
+
+                                                {/* ── Font & Size (compact row) ── */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2.5">
+                                                        <span className="material-symbols-outlined text-[#38e07b] text-sm">text_format</span>
+                                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Typography</h4>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <select
+                                                            value={fontFamily}
+                                                            onChange={(e) => updateBubbleFontFamily(e.target.value)}
+                                                            disabled={!selectedBubble}
+                                                            className="bg-[#16261e] border border-[#264532] rounded-lg py-2 px-2.5 text-xs text-white appearance-none disabled:opacity-40"
+                                                        >
+                                                            <option value="Manga Sans">Manga Sans</option>
+                                                            <option value="Action Bold">Action Bold</option>
+                                                            <option value="Whisper Thin">Whisper Thin</option>
+                                                            <option value="Comic Sans MS">Comic Style</option>
+                                                            <option value="Arial Black">Impact Bold</option>
+                                                        </select>
+                                                        <div className="flex items-center bg-[#16261e] border border-[#264532] rounded-lg overflow-hidden">
+                                                            <button
+                                                                onClick={() => updateBubbleFontSize(-2)}
+                                                                disabled={!selectedBubble}
+                                                                className="px-2 py-2 hover:bg-[#264532] disabled:opacity-40"
+                                                            >
+                                                                <span className="material-symbols-outlined text-xs text-white">remove</span>
+                                                            </button>
+                                                            <span className="flex-1 text-center text-xs text-white font-mono">{fontSize}px</span>
+                                                            <button
+                                                                onClick={() => updateBubbleFontSize(2)}
+                                                                disabled={!selectedBubble}
+                                                                className="px-2 py-2 hover:bg-[#264532] disabled:opacity-40"
+                                                            >
+                                                                <span className="material-symbols-outlined text-xs text-white">add</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="h-px bg-white/5"></div>
+
+                                                {/* ── Bubble Style Grid (8 styles, 4 cols) ── */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2.5">
+                                                        <span className="material-symbols-outlined text-[#38e07b] text-sm">chat</span>
+                                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Bubble Style</h4>
+                                                    </div>
+                                                    <div className="grid grid-cols-4 gap-1.5">
+                                                        {BUBBLE_STYLES.map((style) => (
+                                                            <button
+                                                                key={style.id}
+                                                                onClick={() => updateBubbleStyle(style.id)}
+                                                                disabled={!selectedBubble}
+                                                                className={`flex flex-col items-center gap-0.5 py-2 rounded-lg border transition-all disabled:opacity-40 ${bubbleStyle === style.id
+                                                                    ? "border-[#38e07b] bg-[#38e07b]/10 text-[#38e07b]"
+                                                                    : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50 text-white/70"
+                                                                    }`}
+                                                                title={style.label}
+                                                            >
+                                                                <span className="material-symbols-outlined text-[16px]">{style.icon}</span>
+                                                                <span className="text-[9px] font-medium">{style.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="h-px bg-white/5"></div>
+
+                                                {/* ── Arrow Direction (4 dirs, compact) ── */}
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2.5">
+                                                        <span className="material-symbols-outlined text-[#38e07b] text-sm">call_made</span>
+                                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Tail Direction</h4>
+                                                    </div>
+                                                    <div className="grid grid-cols-4 gap-1.5">
+                                                        {[
+                                                            { dir: "top" as const, icon: "arrow_upward", label: "Up" },
+                                                            { dir: "bottom" as const, icon: "arrow_downward", label: "Down" },
+                                                            { dir: "left" as const, icon: "arrow_back", label: "Left" },
+                                                            { dir: "right" as const, icon: "arrow_forward", label: "Right" },
+                                                        ].map((item) => (
+                                                            <button
+                                                                key={item.dir}
+                                                                onClick={() => updateBubbleTailDirection(item.dir)}
+                                                                disabled={!selectedBubble}
+                                                                className={`flex flex-col items-center gap-0.5 py-2 rounded-lg border transition-all disabled:opacity-40 ${tailDirection === item.dir
+                                                                    ? "border-[#38e07b] bg-[#38e07b]/10 text-[#38e07b]"
+                                                                    : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50 text-white/70"
+                                                                    }`}
+                                                                title={item.label}
+                                                            >
+                                                                <span className="material-symbols-outlined text-[16px]">{item.icon}</span>
+                                                                <span className="text-[9px] font-medium">{item.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                                        <span className="material-symbols-outlined text-5xl text-white/10 mb-4">touch_app</span>
+                                        <p className="text-white/50 text-sm font-medium">Click on a panel to edit</p>
+                                        <p className="text-white/30 text-xs mt-2 max-w-[200px]">Regenerate images, edit dialogue, and customize bubble styles</p>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
 
-                    {/* Quick Actions Footer */}
-                    {selectedPanel !== null && (
-                        <div className="p-4 border-t border-white/5 bg-[#16261e]/50">
-                            <button className="w-full py-2.5 rounded-full bg-[#264532] hover:bg-[#264532]/80 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2">
-                                <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                                Refine Details
-                            </button>
-                        </div>
-                    )}
                 </aside>
             </main>
-        </div>
+        </div >
     );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_URL } from "@/config";
 
 interface Character {
     name: string;
@@ -67,7 +68,7 @@ export default function StoryViewer({ jobId, currentPage, selectedPanel, onSelec
     useEffect(() => {
         const fetchStory = async () => {
             try {
-                const response = await fetch(`http://localhost:8000/api/projects/${jobId}/story`);
+                const response = await fetch(`${API_URL}/api/projects/${jobId}/story`);
                 if (response.ok) {
                     const data = await response.json();
                     setStory(data.story);
@@ -115,8 +116,8 @@ export default function StoryViewer({ jobId, currentPage, selectedPanel, onSelec
                 <button
                     onClick={() => setActiveTab("story")}
                     className={`flex-1 py-2 px-3 text-xs font-medium transition-colors ${activeTab === "story"
-                            ? "text-[#38e07b] border-b-2 border-[#38e07b] bg-[#16261e]"
-                            : "text-gray-400 hover:text-white"
+                        ? "text-[#38e07b] border-b-2 border-[#38e07b] bg-[#16261e]"
+                        : "text-gray-400 hover:text-white"
                         }`}
                 >
                     <span className="material-symbols-outlined text-sm mr-1 align-middle">menu_book</span>
@@ -125,8 +126,8 @@ export default function StoryViewer({ jobId, currentPage, selectedPanel, onSelec
                 <button
                     onClick={() => setActiveTab("characters")}
                     className={`flex-1 py-2 px-3 text-xs font-medium transition-colors ${activeTab === "characters"
-                            ? "text-[#38e07b] border-b-2 border-[#38e07b] bg-[#16261e]"
-                            : "text-gray-400 hover:text-white"
+                        ? "text-[#38e07b] border-b-2 border-[#38e07b] bg-[#16261e]"
+                        : "text-gray-400 hover:text-white"
                         }`}
                 >
                     <span className="material-symbols-outlined text-sm mr-1 align-middle">group</span>
@@ -135,8 +136,8 @@ export default function StoryViewer({ jobId, currentPage, selectedPanel, onSelec
                 <button
                     onClick={() => setActiveTab("current")}
                     className={`flex-1 py-2 px-3 text-xs font-medium transition-colors ${activeTab === "current"
-                            ? "text-[#38e07b] border-b-2 border-[#38e07b] bg-[#16261e]"
-                            : "text-gray-400 hover:text-white"
+                        ? "text-[#38e07b] border-b-2 border-[#38e07b] bg-[#16261e]"
+                        : "text-gray-400 hover:text-white"
                         }`}
                 >
                     <span className="material-symbols-outlined text-sm mr-1 align-middle">crop_free</span>
@@ -186,8 +187,8 @@ export default function StoryViewer({ jobId, currentPage, selectedPanel, onSelec
                                         key={idx}
                                         onClick={() => onSelectPage?.(page.page_number)}
                                         className={`p-2 rounded-lg border cursor-pointer transition-all ${page.page_number === currentPage
-                                                ? "border-[#38e07b] bg-[#38e07b]/10"
-                                                : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50"
+                                            ? "border-[#38e07b] bg-[#38e07b]/10"
+                                            : "border-[#264532] bg-[#16261e] hover:border-[#38e07b]/50"
                                             }`}
                                     >
                                         <div className="flex items-center justify-between mb-1">

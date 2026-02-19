@@ -320,10 +320,15 @@ class PollinationsGenerator:
             # Add random tracking ID to bypass simple URL caching
             tracking = random.randint(10000, 99999)
             url = (
-                f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                f"https://gen.pollinations.ai/image/{encoded_prompt}"
                 f"?width={width}&height={height}&nologo=true&seed={attempt_seed}"
                 f"&negative={encoded_negative}&_fail_check={tracking}"
             )
+            
+            # Add Pollinations API key auth
+            poll_api_key = os.environ.get("POLLINATIONS_API_KEY", "")
+            if poll_api_key:
+                headers["Authorization"] = f"Bearer {poll_api_key}"
             
             try:
                 response = requests.get(url, headers=headers, timeout=60)  # 60 second timeout

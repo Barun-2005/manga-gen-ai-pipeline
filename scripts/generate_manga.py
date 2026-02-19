@@ -30,7 +30,7 @@ class MangaConfig:
     layout: str = "2x2"  # "2x2" (4 panels), "2x3" (6 panels)
     pages: int = 1
     output_dir: str = "outputs"
-    image_provider: str = "pollinations"  # "pollinations", "comfyui", or "nvidia"
+    engine: str = "z_image"  # "z_image", "flux_dev", or "flux_schnell"
     is_complete_story: bool = False  # If True, wrap up story. If False, leave for continuation.
     starting_page_number: int = 1  # For continuations: start at page N+1 to avoid overwriting
     
@@ -229,29 +229,36 @@ class MangaGenerator:
         from src.dialogue.smart_bubbles import SmartBubblePlacer
         from src.ai.character_dna import CharacterDNAManager
         
-        # Choose image generator based on provider
-        if config.image_provider == "comfyui":
-            # Use local ComfyUI with Hybrid Z-Image workflow (TESTED 8.5/10)
+        # Choose image generator based on engine
+        if config.engine == "z_image":
+            # Use local ComfyUI with Z-Image workflow
             from src.ai.image_factory import get_image_provider
-            comfyui = get_image_provider("comfyui")
+            comfyui = get_image_provider("z_image")
             if comfyui.is_available():
-                print(f"📦 Using ComfyUI Hybrid (Z-Image local) - Start with: py -3.10 ComfyUI/main.py --novram")
-                # Wrap ComfyUI provider in a compatible interface
+                print(f"📦 Using Z-Image Engine (ComfyUI local) - Start with: py -3.10 ComfyUI/main.py --novram")
                 self.image_generator = ComfyUIGeneratorWrapper(comfyui, str(self.output_dir))
             else:
-                print(f"⚠️ ComfyUI not available (start it first!), falling back to Pollinations")
+                print(f"⚠️ ComfyUI not available, falling back to Pollinations")
                 self.image_generator = PollinationsGenerator(str(self.output_dir))
-        elif config.image_provider == "nvidia":
-            import os
-            nvidia_key = os.environ.get("NVIDIA_IMAGE_API_KEY")
-            if nvidia_key:
-                print(f"📦 Using NVIDIA FLUX.1-dev (sequential mode)")
-                self.image_generator = NVIDIAImageGenerator(str(self.output_dir), api_key=nvidia_key)
+        elif config.engine in ("flux_dev", "flux_schnell"):
+            # Use local ComfyUI with Flux workflow - PREMIUM MODE
+            print(f"")
+            print(f"🚀 ═══════════════════════════════════════════════════════")
+            print(f"🚀 FLUX PRO ENGINE ACTIVATED")
+            print(f"🚀 Engine: {config.engine.upper()} | IP-Adapter: ENABLED")
+            print(f"🚀 ═══════════════════════════════════════════════════════")
+            print(f"")
+            from src.ai.image_factory import get_image_provider
+            flux = get_image_provider(config.engine)
+            if flux.is_available():
+                print(f"📦 Flux Provider: {flux.name}")
+                self.image_generator = ComfyUIGeneratorWrapper(flux, str(self.output_dir))
             else:
-                print(f"⚠️ NVIDIA_IMAGE_API_KEY not found, falling back to Pollinations")
+                print(f"⚠️ ComfyUI not available for Flux, falling back to Pollinations")
                 self.image_generator = PollinationsGenerator(str(self.output_dir))
         else:
-            print(f"📦 Using Pollinations.ai (parallel mode)")
+            # Default: Pollinations cloud
+            print(f"📦 Using Pollinations.ai Cloud (parallel mode)")
             self.image_generator = PollinationsGenerator(str(self.output_dir))
         
         # Character DNA Manager for visual consistency
@@ -454,7 +461,8 @@ class MangaGenerator:
                 page_count=self.config.pages,
                 panels_per_page=self.config.panels_per_page,
                 style=self.config.style,
-                is_complete_story=self.config.is_complete_story
+                is_complete_story=self.config.is_complete_story,
+                engine=self.config.engine  # DUAL ENGINE: z_image, flux_dev, flux_schnell
             )
             
             # Register characters with Character DNA Manager

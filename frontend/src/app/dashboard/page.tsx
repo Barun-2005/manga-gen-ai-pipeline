@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_URL } from "@/config";
 
 interface Project {
     job_id: string;
@@ -45,7 +45,8 @@ export default function DashboardPage() {
     const [apiKeys, setApiKeys] = useState({
         GROQ_API_KEY: "",
         NVIDIA_API_KEY: "",
-        GEMINI_API_KEY: ""
+        GEMINI_API_KEY: "",
+        POLLINATIONS_API_KEY: ""
     });
 
     // Delete confirmation modal states
@@ -74,7 +75,7 @@ export default function DashboardPage() {
         setContinuing(true);
 
         try {
-            const response = await fetch(`http://localhost:8000/api/projects/${continueProject.job_id}/continue`, {
+            const response = await fetch(`${API_URL}/api/projects/${continueProject.job_id}/continue`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -165,7 +166,7 @@ export default function DashboardPage() {
         // Fetch REAL projects from API
         const fetchProjects = async () => {
             try {
-                const response = await fetch("http://localhost:8000/api/projects");
+                const response = await fetch(`${API_URL}/api/projects`);
                 if (response.ok) {
                     const data = await response.json();
                     setProjects(data.projects || []);
@@ -220,6 +221,13 @@ export default function DashboardPage() {
                         {/* Navigation */}
                         <nav className="flex flex-col gap-2">
                             <Link
+                                href="/"
+                                className="flex items-center gap-3 px-4 py-3 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+                            >
+                                <span className="material-symbols-outlined">home</span>
+                                <span className="text-sm font-medium">Home</span>
+                            </Link>
+                            <Link
                                 href="/dashboard"
                                 className="flex items-center gap-3 px-4 py-3 rounded-full bg-[#38e07b]/10 text-[#38e07b] shadow-[0_0_20px_-5px_rgba(56,224,123,0.15)]"
                             >
@@ -233,15 +241,10 @@ export default function DashboardPage() {
                                 <span className="material-symbols-outlined">auto_awesome</span>
                                 <span className="text-sm font-medium">Generate</span>
                             </Link>
-                            <button className="flex items-center gap-3 px-4 py-3 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition-all w-full text-left">
-                                <span className="material-symbols-outlined">face</span>
-                                <span className="text-sm font-medium">Characters</span>
-                            </button>
-                            <button className="flex items-center gap-3 px-4 py-3 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition-all w-full text-left">
-                                <span className="material-symbols-outlined">groups</span>
-                                <span className="text-sm font-medium">Community</span>
-                            </button>
-                            <button className="flex items-center gap-3 px-4 py-3 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition-all w-full text-left">
+                            <button
+                                onClick={() => setShowSettings(true)}
+                                className="flex items-center gap-3 px-4 py-3 rounded-full text-gray-400 hover:text-white hover:bg-white/5 transition-all w-full text-left"
+                            >
                                 <span className="material-symbols-outlined">settings</span>
                                 <span className="text-sm font-medium">Settings</span>
                             </button>
@@ -415,7 +418,7 @@ export default function DashboardPage() {
                                     <div className="relative aspect-[3/4] w-full overflow-hidden bg-gradient-to-br from-[#264532] to-[#16261e]">
                                         {project.cover_url ? (
                                             <img
-                                                src={`http://localhost:8000${project.cover_url}`}
+                                                src={`${API_URL}${project.cover_url}`}
                                                 alt={project.title}
                                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                             />
@@ -698,6 +701,17 @@ export default function DashboardPage() {
                                     placeholder="AIza..."
                                     className="w-full bg-[#0a110e] border border-[#264532] rounded-lg px-4 py-3 text-white placeholder:text-gray-600 focus:border-[#38e07b] focus:outline-none"
                                 />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-white block mb-2">Pollinations API Key</label>
+                                <input
+                                    type="password"
+                                    value={apiKeys.POLLINATIONS_API_KEY}
+                                    onChange={(e) => setApiKeys({ ...apiKeys, POLLINATIONS_API_KEY: e.target.value })}
+                                    placeholder="sk_..."
+                                    className="w-full bg-[#0a110e] border border-[#264532] rounded-lg px-4 py-3 text-white placeholder:text-gray-600 focus:border-[#38e07b] focus:outline-none"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Used for image generation. Get yours at pollinations.ai</p>
                             </div>
                         </div>
 

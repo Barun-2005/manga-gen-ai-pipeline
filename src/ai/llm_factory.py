@@ -272,7 +272,12 @@ class FallbackLLM(LLMProvider):
         
         for i, provider in enumerate(self.providers):
             try:
-                print(f"🤖 Using: {provider.name}")
+                # Show actual model if overridden
+                model_override = kwargs.get("model")
+                if model_override:
+                    print(f"🤖 Using: {provider.name} → MODEL OVERRIDE: {model_override}")
+                else:
+                    print(f"🤖 Using: {provider.name}")
                 result = provider.generate(prompt, **kwargs)
                 return result
                 

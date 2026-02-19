@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { API_URL } from "@/config";
 
 interface StepStatus {
     name: string;
@@ -53,7 +54,7 @@ export default function GeneratePage() {
 
         const pollStatus = async () => {
             try {
-                const response = await fetch(`http://localhost:8000/api/status/${jobId}`, {
+                const response = await fetch(`${API_URL}/api/status/${jobId}`, {
                     signal: AbortSignal.timeout(10000) // 10 second timeout
                 });
                 if (!response.ok) {
@@ -291,8 +292,8 @@ export default function GeneratePage() {
                                             <div
                                                 key={index}
                                                 className={`rounded-xl overflow-hidden flex items-center justify-center transition-all duration-500 ${isCurrentlyGenerating
-                                                        ? "border-2 border-[#38e07b] ring-2 ring-[#38e07b]/30 bg-[#1a3326]"
-                                                        : "border border-white/10 bg-[#16261e]/50"
+                                                    ? "border-2 border-[#38e07b] ring-2 ring-[#38e07b]/30 bg-[#1a3326]"
+                                                    : "border border-white/10 bg-[#16261e]/50"
                                                     }`}
                                                 style={{ aspectRatio: '1/1.2' }}
                                             >
@@ -320,7 +321,7 @@ export default function GeneratePage() {
                                             style={{ aspectRatio: '1/1.2' }}
                                         >
                                             <img
-                                                src={`http://localhost:8000${preview}`}
+                                                src={`${API_URL}${preview}`}
                                                 alt={`Panel ${index + 1}`}
                                                 className="w-full h-full object-cover"
                                             />

@@ -56,7 +56,7 @@ class GenerateRequest(BaseModel):
     style: str = "color_anime"  # "color_anime" or "bw_manga"
     layout: str = "2x2"  # "2x2", "2x3", "3x3"
     pages: int = 1
-    image_provider: str = "pollinations"  # "pollinations" (cloud), "comfyui" (local Z-Image), or "auto"
+    engine: str = "pollinations"  # "pollinations" (cloud), "z_image" (local), "flux_dev" (pro), "flux_schnell" (draft)
     characters: Optional[List[CharacterInput]] = None
     user_direction: Optional[str] = None # For continuation
     api_keys: Optional[Dict[str, str]] = None # For BYOK (Bring Your Own Key)
@@ -157,7 +157,9 @@ async def enhance_prompt(request: EnhanceRequest):
         enhanced = director.enhance_prompt(request.prompt)
         return EnhanceResponse(original=request.prompt, enhanced=enhanced)
     except Exception as e:
+        import traceback
         print(f"Enhance prompt error: {e}")
+        traceback.print_exc()
         # Fallback: just add some details without AI
         enhanced = f"{request.prompt}. A dramatic tale with intense action, emotional depth, and stunning visuals."
         return EnhanceResponse(original=request.prompt, enhanced=enhanced)
@@ -914,10 +916,17 @@ async def run_generation(job_id: str, request: GenerateRequest):
         nvidia_key = api_keys.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_API_KEY")
         gemini_key = api_keys.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
         
+        # BYOK Pollinations: user's key takes priority over server key
+        byok_poll_key = api_keys.get("POLLINATIONS_API_KEY")
+        if byok_poll_key:
+            os.environ["POLLINATIONS_API_KEY"] = byok_poll_key
+            log("Using user-provided Pollinations API key")
+        
         if not groq_key and not nvidia_key:
             raise ValueError("Need GROQ_API_KEY or NVIDIA_API_KEY")
         
-        log(f"API keys found: Groq={'yes' if groq_key else 'no'}, NVIDIA={'yes' if nvidia_key else 'no'}")
+        poll_key = os.environ.get("POLLINATIONS_API_KEY", "")
+        log(f"API keys found: Groq={'yes' if groq_key else 'no'}, NVIDIA={'yes' if nvidia_key else 'no'}, Pollinations={'yes' if poll_key else 'no'}")
         
         # Create config
         config = MangaConfig(
@@ -926,7 +935,7 @@ async def run_generation(job_id: str, request: GenerateRequest):
             layout=request.layout,
             pages=request.pages,
             output_dir=str(OUTPUT_DIR / job_id),
-            image_provider=request.image_provider,
+            engine=request.engine,  # DUAL ENGINE: z_image, flux_dev, flux_schnell, pollinations
             is_complete_story=False  # Default to chapter mode
         )
         
@@ -1406,12 +1415,18 @@ Example format: character action, expression, camera angle, lighting, environmen
         import random
         new_seed = random.randint(1000, 9999)
         
-        img_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=768&nologo=true&seed={new_seed}"
+        img_url = f"https://gen.pollinations.ai/image/{encoded_prompt}?width=768&height=768&nologo=true&seed={new_seed}"
         
         print(f"   🎨 Generating new panel...")
         
+        # Add Pollinations API key auth
+        poll_headers = {}
+        poll_api_key = os.environ.get("POLLINATIONS_API_KEY", "")
+        if poll_api_key:
+            poll_headers["Authorization"] = f"Bearer {poll_api_key}"
+        
         async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.get(img_url)
+            response = await client.get(img_url, headers=poll_headers)
             
             if response.status_code == 200:
                 # Save new panel (with timestamp to avoid overwrite)
