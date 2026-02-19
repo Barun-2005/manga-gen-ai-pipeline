@@ -3,6 +3,11 @@
 # For Kaggle: Run install_kaggle_deps.sh instead
 # For local development: pip install -r requirements.txt
 
+# Core API
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-multipart>=0.0.6
+
 # Core AI/ML
 torch>=2.0.0
 torchvision>=0.15.0
