@@ -269,9 +269,11 @@ manga-gen-ai-pipeline/
 
 <br/>
 
-## License
+## License & Terms of Use
 
-MIT License — use it, break it, make it better.
+Copyright (c) 2026 Barun-2005. All rights reserved.
+
+This project is open for educational, personal, and non-commercial use only. Commercial use, redistribution, packaging, or integration of this source code (in whole or in part) into paid tools, software, or products is strictly prohibited without explicit written permission from the copyright holder.
 
 ---
 
